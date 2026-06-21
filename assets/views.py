@@ -1,5 +1,5 @@
 # assets/views.py
-# Полная версия с поддержкой инвентаризации через камеру и AJAX
+# Полная версия с поддержкой инвентаризации через камеру, AJAX, офлайн-синхронизацией и API
 
 import logging
 from django.shortcuts import render, get_object_or_404, redirect
@@ -15,9 +15,15 @@ from django.http import HttpResponse, JsonResponse
 from django.db.models import Q, Count
 from django.utils import timezone
 
+# REST Framework для API
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
 from users.models import UserRole
 from .models import Asset, AssetCategory, AssetAssignment, AssetCheck
 from .forms import AssetForm, AssetAssignmentForm, AssetCheckForm
+from .serializers import AssetSimpleSerializer, InventorySyncSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +285,6 @@ def inventory_asset(request, pk):
         )
         check.save()
         messages.success(request, f'Имущество "{asset.name}" отмечено в инвентаризации.')
-    # Перенаправление: если передан параметр next, используем его
     next_url = request.GET.get('next')
     if next_url:
         return redirect(next_url)
@@ -314,7 +319,6 @@ def inventory_scan_ajax(request):
     if not asset:
         return JsonResponse({'success': False, 'error': 'Имущество не найдено'})
 
-    # Проверяем, не было ли отметки сегодня
     today = timezone.now().date()
     existing = AssetCheck.objects.filter(
         asset=asset,
@@ -333,7 +337,6 @@ def inventory_scan_ajax(request):
             }
         })
 
-    # Создаём запись проверки
     check = AssetCheck(
         asset=asset,
         checked_by=request.user,
@@ -362,3 +365,58 @@ def inventory_history(request):
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     return render(request, 'assets/inventory_history.html', {'page_obj': page_obj})
+
+
+# ---------- API ДЛЯ ОФЛАЙН-ИНВЕНТАРИЗАЦИИ ----------
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def asset_list_api(request):
+    """
+    Возвращает список всех активов (id, инвентарный номер, название).
+    Используется для кэширования на клиенте при офлайн-работе.
+    """
+    assets = Asset.objects.all().only('id', 'inventory_number', 'name')
+    serializer = AssetSimpleSerializer(assets, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def inventory_sync_api(request):
+    """
+    Принимает список инвентарных номеров и создаёт записи AssetCheck для текущего пользователя.
+    Используется для синхронизации офлайн-отметок после восстановления соединения.
+    """
+    serializer = InventorySyncSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+
+    inventory_numbers = serializer.validated_data['inventory_numbers']
+    user = request.user
+    created_count = 0
+    errors = []
+
+    for inv_number in inventory_numbers:
+        try:
+            asset = Asset.objects.get(inventory_number=inv_number)
+        except Asset.DoesNotExist:
+            errors.append(f'Не найден актив с номером {inv_number}')
+            continue
+
+        today = timezone.now().date()
+        if AssetCheck.objects.filter(asset=asset, checked_by=user, checked_at__date=today).exists():
+            continue  # пропускаем дубли
+
+        AssetCheck.objects.create(
+            asset=asset,
+            checked_by=user,
+            condition='good',
+            notes=f'Отмечено офлайн {timezone.now().strftime("%d.%m.%Y %H:%M")}'
+        )
+        created_count += 1
+
+    return Response({
+        'success': True,
+        'created': created_count,
+        'errors': errors
+    })

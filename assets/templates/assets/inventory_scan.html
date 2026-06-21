@@ -32,21 +32,11 @@
 
     /* Адаптация для мобильных */
     @media (max-width: 768px) {
-        h2 {
-            font-size: 1.4rem;
-        }
-        .card-body {
-            padding: 0.75rem;
-        }
-        #reader {
-            max-width: 100%;
-        }
-        #reader video {
-            border-radius: 8px;
-        }
-        .input-group {
-            flex-wrap: nowrap;
-        }
+        h2 { font-size: 1.4rem; }
+        .card-body { padding: 0.75rem; }
+        #reader { max-width: 100%; }
+        #reader video { border-radius: 8px; }
+        .input-group { flex-wrap: nowrap; }
         #manualInput {
             font-size: 1.1rem;
             padding: 0.6rem 0.75rem;
@@ -61,61 +51,88 @@
             padding: 0.3rem 0.4rem;
             font-size: 0.85rem;
         }
-        .card-header h5 {
-            font-size: 1rem;
-        }
-        .badge {
-            font-size: 0.75rem;
-        }
-        .btn {
-            font-size: 0.9rem;
-            padding: 0.4rem 0.8rem;
-        }
-        .d-flex.gap-2 {
-            gap: 0.4rem !important;
-        }
-        .mt-3 {
-            margin-top: 0.75rem !important;
-        }
-        .mb-3 {
-            margin-bottom: 0.75rem !important;
-        }
+        .card-header h5 { font-size: 1rem; }
+        .badge { font-size: 0.75rem; }
+        .btn { font-size: 0.9rem; padding: 0.4rem 0.8rem; }
+        .d-flex.gap-2 { gap: 0.4rem !important; }
+        .mt-3 { margin-top: 0.75rem !important; }
+        .mb-3 { margin-bottom: 0.75rem !important; }
+    }
+    @media (max-width: 480px) {
+        h2 { font-size: 1.2rem; }
+        #manualInput { font-size: 1rem; padding: 0.5rem 0.6rem; }
+        #manualScanBtn { font-size: 0.9rem; padding: 0.5rem 0.8rem; }
+        .table-sm td, .table-sm th { font-size: 0.75rem; padding: 0.2rem 0.3rem; }
+        .card-header h5 { font-size: 0.9rem; }
     }
 
-    @media (max-width: 480px) {
-        h2 {
-            font-size: 1.2rem;
-        }
-        #manualInput {
-            font-size: 1rem;
-            padding: 0.5rem 0.6rem;
-        }
-        #manualScanBtn {
-            font-size: 0.9rem;
-            padding: 0.5rem 0.8rem;
-        }
-        .table-sm td, .table-sm th {
-            font-size: 0.75rem;
-            padding: 0.2rem 0.3rem;
-        }
-        .card-header h5 {
-            font-size: 0.9rem;
-        }
+    /* Офлайн-баннер */
+    .offline-indicator {
+        border-radius: 0;
+        margin-bottom: 0;
+    }
+    .sync-btn {
+        margin-left: auto;
+    }
+    #cameraControls {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 0.5rem;
+    }
+    #reader-container {
+        display: none;
+        margin-top: 1rem;
+    }
+    #reader-container.active {
+        display: block;
+    }
+    #offlineBanner {
+        display: none;
+        border-radius: 8px;
+        margin-bottom: 1rem;
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container mt-4">
+    <!-- Баннер офлайн-записей -->
+    <div id="offlineBanner" class="alert alert-warning d-flex align-items-center justify-content-between" role="alert">
+        <div>
+            <i class="bi bi-cloud-arrow-down-fill me-2"></i>
+            <span id="offlineBannerText">У вас есть несинхронизированные отметки (0).</span>
+        </div>
+        <div>
+            <button id="syncFromBannerBtn" class="btn btn-success btn-sm">
+                <i class="bi bi-cloud-upload"></i> Синхронизировать сейчас
+            </button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+        </div>
+    </div>
+
     <h2 class="fw-semibold"><i class="bi bi-qr-code-scan text-primary me-2"></i>Инвентаризация</h2>
     <p class="text-muted">Наведите камеру на QR-код имущества или введите номер вручную.</p>
 
     <div class="row">
-        <!-- Левая колонка: сканер -->
+        <!-- Левая колонка: сканер и управление -->
         <div class="col-md-6">
             <div class="card shadow-sm">
                 <div class="card-body">
-                    <div id="reader"></div>
+                    <!-- Кнопки управления камерой -->
+                    <div id="cameraControls">
+                        <button id="startCameraBtn" class="btn btn-success">
+                            <i class="bi bi-camera"></i> Запустить камеру
+                        </button>
+                        <button id="stopCameraBtn" class="btn btn-danger" style="display:none;">
+                            <i class="bi bi-camera-off"></i> Остановить камеру
+                        </button>
+                    </div>
+                    <!-- Контейнер для сканера -->
+                    <div id="reader-container">
+                        <div id="reader"></div>
+                    </div>
+                    <!-- Ручной ввод -->
                     <div class="mt-3">
                         <div class="input-group">
                             <input type="text" id="manualInput" class="form-control" placeholder="Введите инв. номер">
@@ -132,9 +149,15 @@
         <!-- Правая колонка: список отсканированных -->
         <div class="col-md-6">
             <div class="card shadow-sm">
-                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap">
                     <h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Отсканированные сегодня</h5>
-                    <span class="badge bg-primary rounded-pill" id="scanCount">{{ scans|length }}</span>
+                    <div class="d-flex gap-2">
+                        <span class="badge bg-primary rounded-pill" id="scanCount">{{ scans|length }}</span>
+                        <button id="syncBtn" class="btn btn-outline-success btn-sm sync-btn">
+                            <i class="bi bi-cloud-upload"></i> Синхронизировать
+                            <span class="badge bg-secondary" id="offlineBadge" style="display:none;">0</span>
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -193,15 +216,181 @@ document.addEventListener('DOMContentLoaded', function() {
     const tableBody = document.getElementById('scanTableBody');
     const noScansRow = document.getElementById('noScansRow');
     const scanCount = document.getElementById('scanCount');
+    const startCameraBtn = document.getElementById('startCameraBtn');
+    const stopCameraBtn = document.getElementById('stopCameraBtn');
+    const readerContainer = document.getElementById('reader-container');
+    const syncBtn = document.getElementById('syncBtn');
+    const offlineBadge = document.getElementById('offlineBadge');
+    const offlineBanner = document.getElementById('offlineBanner');
+    const offlineBannerText = document.getElementById('offlineBannerText');
+    const syncFromBannerBtn = document.getElementById('syncFromBannerBtn');
 
-    // Автофокус на поле ввода для мобильных (удобно)
-    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-        manualInput.focus();
+    // ---------- ОФЛАЙН-ИНВЕНТАРИЗАЦИЯ ----------
+    const OFFLINE_KEY = 'offline_scans';
+    const ASSETS_KEY = 'cached_assets';
+
+    // Загрузка списка активов при первом запуске (только онлайн)
+    function loadAssetsCache() {
+        if (navigator.onLine) {
+            fetch('/assets/api/assets/')
+                .then(response => response.json())
+                .then(data => {
+                    localStorage.setItem(ASSETS_KEY, JSON.stringify(data));
+                    console.log('Кэш активов обновлён');
+                })
+                .catch(err => console.warn('Не удалось загрузить кэш активов', err));
+        }
     }
+
+    // Получить кэшированные активы
+    function getCachedAssets() {
+        const raw = localStorage.getItem(ASSETS_KEY);
+        if (!raw) return [];
+        try { return JSON.parse(raw); } catch { return []; }
+    }
+
+    // Сохранить отметку офлайн
+    function saveOfflineScan(inventoryNumber) {
+        let scans = JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]');
+        const now = new Date().toISOString();
+        scans.push({
+            inventory_number: inventoryNumber,
+            timestamp: now,
+            synced: false
+        });
+        localStorage.setItem(OFFLINE_KEY, JSON.stringify(scans));
+        updateOfflineBadge();
+    }
+
+    // Отправить все несинхронизированные отметки на сервер
+    function syncOfflineScans() {
+        if (!navigator.onLine) {
+            console.warn('Нет подключения к интернету. Синхронизация невозможна.');
+            return Promise.reject('offline');
+        }
+
+        const scans = JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]');
+        const unsynced = scans.filter(s => !s.synced);
+        if (unsynced.length === 0) {
+            console.log('Нет данных для синхронизации.');
+            return Promise.resolve();
+        }
+
+        const invNumbers = unsynced.map(s => s.inventory_number);
+        return fetch('/assets/api/inventory/sync/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({ inventory_numbers: invNumbers })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Помечаем все как синхронизированные
+                const updated = scans.map(s => {
+                    if (!s.synced) s.synced = true;
+                    return s;
+                });
+                // Оставляем только несинхронизированные (их уже нет, но на всякий случай)
+                const remaining = updated.filter(s => !s.synced);
+                if (remaining.length === 0) {
+                    localStorage.removeItem(OFFLINE_KEY);
+                } else {
+                    localStorage.setItem(OFFLINE_KEY, JSON.stringify(remaining));
+                }
+                updateOfflineBadge();
+                // Перезагружаем страницу, чтобы обновить список
+                if (data.created > 0) {
+                    location.reload();
+                }
+                return data;
+            } else {
+                throw new Error('Ошибка синхронизации: ' + JSON.stringify(data));
+            }
+        })
+        .catch(err => {
+            console.error('Ошибка при синхронизации:', err);
+            alert('Не удалось синхронизировать данные. Попробуйте позже.');
+        });
+    }
+
+    // Обновить индикаторы (бейдж на кнопке и баннер)
+    function updateOfflineBadge() {
+        const scans = JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]');
+        const unsynced = scans.filter(s => !s.synced);
+        // Обновляем бейдж на кнопке
+        if (offlineBadge) {
+            offlineBadge.textContent = unsynced.length;
+            offlineBadge.style.display = unsynced.length ? 'inline-block' : 'none';
+        }
+        // Управляем баннером
+        if (offlineBanner && offlineBannerText) {
+            if (unsynced.length > 0) {
+                offlineBanner.style.display = 'flex';
+                offlineBannerText.textContent = `У вас есть несинхронизированные отметки (${unsynced.length}). Нажмите кнопку, чтобы отправить их на сервер.`;
+            } else {
+                offlineBanner.style.display = 'none';
+            }
+        }
+    }
+
+    // ---------- АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ ----------
+    // 1. При восстановлении интернета
+    window.addEventListener('online', () => {
+        document.querySelector('.offline-indicator')?.remove();
+        // Автоматическая синхронизация при восстановлении соединения
+        syncOfflineScans();
+    });
+
+    // 2. При загрузке страницы, если есть интернет и есть несинхронизированные записи
+    function autoSyncOnLoad() {
+        const scans = JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]');
+        const unsynced = scans.filter(s => !s.synced);
+        if (navigator.onLine && unsynced.length > 0) {
+            console.log('Автоматическая синхронизация при загрузке страницы...');
+            syncOfflineScans();
+        }
+    }
+
+    // 3. (Опционально) Периодическая синхронизация каждые 30 секунд, если есть несинхронизированные и есть интернет
+    setInterval(() => {
+        const scans = JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]');
+        const unsynced = scans.filter(s => !s.synced);
+        if (navigator.onLine && unsynced.length > 0) {
+            syncOfflineScans();
+        }
+    }, 30000); // каждые 30 секунд
+
+    // Обработчик офлайн-режима (показываем индикатор)
+    window.addEventListener('offline', () => {
+        const nav = document.querySelector('.navbar');
+        if (nav && !document.querySelector('.offline-indicator')) {
+            const div = document.createElement('div');
+            div.className = 'offline-indicator alert alert-warning text-center mb-0';
+            div.textContent = '⚠️ Вы работаете офлайн. Отметки будут сохранены локально.';
+            nav.parentNode.insertBefore(div, nav.nextSibling);
+        }
+    });
+
+    // Инициализация офлайн-функций
+    if (!localStorage.getItem(ASSETS_KEY)) {
+        loadAssetsCache();
+    }
+    syncBtn.addEventListener('click', syncOfflineScans);
+    syncFromBannerBtn.addEventListener('click', syncOfflineScans);
+    updateOfflineBadge();
+
+    // Запускаем автосинхронизацию при загрузке
+    autoSyncOnLoad();
+
+    // ---------- ОСНОВНАЯ ЛОГИКА ----------
+    let html5QrCode = null;
+    let isCameraRunning = false;
 
     function addScannedAsset(data) {
         if (noScansRow) noScansRow.remove();
-
         const row = document.createElement('tr');
         row.className = 'scan-result';
         row.innerHTML = `
@@ -209,6 +398,20 @@ document.addEventListener('DOMContentLoaded', function() {
             <td>${data.asset.inventory_number}</td>
             <td><a href="/assets/${data.asset.id}/" target="_blank">${data.asset.name}</a></td>
             <td>${data.asset.scanned_at || 'только что'}</td>
+        `;
+        tableBody.appendChild(row);
+        scanCount.textContent = tableBody.children.length;
+    }
+
+    function addOfflineRow(invNumber, name) {
+        if (noScansRow) noScansRow.remove();
+        const row = document.createElement('tr');
+        row.className = 'table-warning scan-result';
+        row.innerHTML = `
+            <td>${tableBody.children.length + 1}</td>
+            <td>${invNumber}</td>
+            <td>${name}</td>
+            <td><span class="badge bg-warning text-dark">офлайн</span></td>
         `;
         tableBody.appendChild(row);
         scanCount.textContent = tableBody.children.length;
@@ -228,70 +431,135 @@ document.addEventListener('DOMContentLoaded', function() {
         const trimmed = inventoryNumber.trim();
         if (!trimmed) return;
 
-        fetch('/assets/inventory/scan-ajax/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-CSRFToken': csrfToken,
-            },
-            body: `inventory_number=${encodeURIComponent(trimmed)}`
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showStatus(`✅ ${data.asset.name} (${data.asset.inventory_number}) отмечен!`, 'success');
-                addScannedAsset(data);
-                manualInput.value = '';
-                // Снова фокус для быстрого следующего сканирования
-                if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-                    manualInput.focus();
-                }
-            } else {
-                if (data.asset && data.asset.already_scanned) {
-                    showStatus(`⚠️ ${data.asset.name} уже был отмечен сегодня`, 'warning');
+        // Если есть интернет – пробуем отправить сразу
+        if (navigator.onLine) {
+            fetch('/assets/inventory/scan-ajax/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: `inventory_number=${encodeURIComponent(trimmed)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus(`✅ ${data.asset.name} (${data.asset.inventory_number}) отмечен!`, 'success');
+                    addScannedAsset(data);
+                    manualInput.value = '';
                 } else {
-                    showStatus(`❌ ${data.error}`, 'danger');
+                    // Если сервер вернул ошибку, но это не дубль – сохраняем офлайн
+                    if (data.error === 'Имущество не найдено') {
+                        const cached = getCachedAssets().find(a => a.inventory_number === trimmed);
+                        if (cached) {
+                            saveOfflineScan(trimmed);
+                            showStatus(`📴 ${cached.name} (${trimmed}) сохранён офлайн`, 'warning');
+                            manualInput.value = '';
+                            addOfflineRow(trimmed, cached.name);
+                        } else {
+                            showStatus(`❌ Имущество с номером ${trimmed} не найдено ни на сервере, ни в кэше.`, 'danger');
+                        }
+                    } else if (data.asset && data.asset.already_scanned) {
+                        showStatus(`⚠️ ${data.asset.name} уже был отмечен сегодня`, 'warning');
+                    } else {
+                        // Неизвестная ошибка – сохраняем офлайн на всякий случай
+                        saveOfflineScan(trimmed);
+                        showStatus(`📴 Сохранено офлайн (${trimmed})`, 'warning');
+                        manualInput.value = '';
+                    }
                 }
-            }
-        })
-        .catch(err => {
-            showStatus('❌ Ошибка соединения', 'danger');
-            console.error(err);
+            })
+            .catch(err => {
+                // Ошибка сети – сохраняем офлайн
+                saveOfflineScan(trimmed);
+                const cached = getCachedAssets().find(a => a.inventory_number === trimmed);
+                const name = cached ? cached.name : trimmed;
+                showStatus(`📴 ${name} сохранён офлайн`, 'warning');
+                manualInput.value = '';
+                addOfflineRow(trimmed, name);
+            });
+        } else {
+            // Офлайн – сразу сохраняем локально
+            saveOfflineScan(trimmed);
+            const cached = getCachedAssets().find(a => a.inventory_number === trimmed);
+            const name = cached ? cached.name : trimmed;
+            showStatus(`📴 ${name} сохранён офлайн`, 'warning');
+            manualInput.value = '';
+            addOfflineRow(trimmed, name);
+        }
+    }
+
+    // ---------- УПРАВЛЕНИЕ КАМЕРОЙ ----------
+    function startCamera() {
+        if (html5QrCode) {
+            html5QrCode.start(
+                { facingMode: "environment" },
+                { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+                onScanSuccess,
+                onScanError
+            ).then(() => {
+                isCameraRunning = true;
+                readerContainer.classList.add('active');
+                startCameraBtn.style.display = 'none';
+                stopCameraBtn.style.display = 'inline-block';
+            }).catch(err => {
+                console.error('Ошибка запуска камеры:', err);
+                showStatus('⚠️ Не удалось получить доступ к камере. Используйте ручной ввод.', 'warning');
+            });
+            return;
+        }
+
+        html5QrCode = new Html5Qrcode("reader");
+        html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+            onScanSuccess,
+            onScanError
+        ).then(() => {
+            isCameraRunning = true;
+            readerContainer.classList.add('active');
+            startCameraBtn.style.display = 'none';
+            stopCameraBtn.style.display = 'inline-block';
+        }).catch(err => {
+            console.error('Ошибка запуска камеры:', err);
+            showStatus('⚠️ Не удалось получить доступ к камере. Используйте ручной ввод.', 'warning');
         });
     }
 
-    // Инициализация сканера
-    const html5QrCode = new Html5Qrcode("reader");
-    const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0
-    };
-
-    html5QrCode.start(
-        { facingMode: "environment" },
-        config,
-        (decodedText) => {
-            // Принимаем любой текст – если это URL с номером, извлечём номер
-            let invNumber = decodedText;
-            // Попытка извлечь инвентарный номер, если в QR закодирован URL
-            const match = decodedText.match(/\/(\d+)\/?$/);
-            if (match) {
-                // Если найден ID, но нам нужен инвентарный номер – лучше сделать запрос к серверу
-                // Но мы не знаем номер, поэтому проще считать, что в QR закодирован именно номер.
-                // Поэтому оставляем как есть, возможно пользователь закодировал номер.
-            }
-            processScan(invNumber);
-        },
-        (error) => {
-            // Игнорируем ошибки сканирования
+    function stopCamera() {
+        if (html5QrCode && isCameraRunning) {
+            html5QrCode.stop().then(() => {
+                isCameraRunning = false;
+                readerContainer.classList.remove('active');
+                startCameraBtn.style.display = 'inline-block';
+                stopCameraBtn.style.display = 'none';
+            }).catch(err => {
+                console.error('Ошибка остановки камеры:', err);
+            });
+        } else {
+            readerContainer.classList.remove('active');
+            startCameraBtn.style.display = 'inline-block';
+            stopCameraBtn.style.display = 'none';
         }
-    ).catch(err => {
-        console.error('Ошибка запуска камеры:', err);
-        showStatus('⚠️ Не удалось получить доступ к камере. Используйте ручной ввод.', 'warning');
-    });
+    }
 
-    // Ручной ввод
+    function onScanSuccess(decodedText) {
+        let invNumber = decodedText;
+        const match = decodedText.match(/\/(\d+)\/?$/);
+        if (match) {
+            // Если это URL с ID, попробуем найти по ID? Но в QR теперь номер, поэтому оставляем как есть.
+        }
+        processScan(invNumber);
+    }
+
+    function onScanError(error) {
+        // Игнорируем
+    }
+
+    // События кнопок
+    startCameraBtn.addEventListener('click', startCamera);
+    stopCameraBtn.addEventListener('click', stopCamera);
+
     manualBtn.addEventListener('click', function() {
         processScan(manualInput.value);
     });
@@ -301,6 +569,23 @@ document.addEventListener('DOMContentLoaded', function() {
             manualBtn.click();
         }
     });
+
+    // Если устройство мобильное – автофокус на поле ввода
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+        manualInput.focus();
+    }
+
+    // Показываем офлайн-записи при загрузке
+    const offlineScans = JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]');
+    const unsyncedOffline = offlineScans.filter(s => !s.synced);
+    if (unsyncedOffline.length > 0) {
+        const cachedAssets = getCachedAssets();
+        unsyncedOffline.forEach(scan => {
+            const asset = cachedAssets.find(a => a.inventory_number === scan.inventory_number);
+            const name = asset ? asset.name : scan.inventory_number;
+            addOfflineRow(scan.inventory_number, name);
+        });
+    }
 });
 </script>
 {% endblock %}

@@ -22,7 +22,9 @@ urlpatterns = [
     path('<int:pk>/qr/download/', views.download_asset_qr, name='download_qr'),
 
     # Инвентаризация (отметка конкретного объекта)
-    path('<int:pk>/inventory/', views.inventory_asset, name='inventory_asset'),  # <-- ДОБАВЛЕНО
+    path('<int:pk>/inventory/', views.inventory_asset, name='inventory_asset'), 
+    path('api/assets/', views.asset_list_api, name='api_asset_list'),
+    path('api/inventory/sync/', views.inventory_sync_api, name='api_inventory_sync'), # <-- ДОБАВЛЕНО
 
     # Инвентаризация (общие страницы)
     path('inventory/', views.inventory_scan, name='inventory_scan'),
