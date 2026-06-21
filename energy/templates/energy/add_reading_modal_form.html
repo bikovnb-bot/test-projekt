@@ -1,0 +1,13 @@
+{% csrf_token %}
+<style>
+    /* Уменьшаем ширину поля даты */
+    #addReadingModalBody #id_date {
+        width: auto;
+        max-width: 200px;
+    }
+    /* Стили для поля документа */
+    #addReadingModalBody .field-document input {
+        padding: 0.5rem;
+    }
+</style>
+{{ form.as_p }}

@@ -1,0 +1,98 @@
+{# assets/templates/assets/asset_form.html #}
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}{% if form.instance.pk %}Редактирование имущества{% else %}Добавление имущества{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>{% if form.instance.pk %}✏️ Редактирование имущества{% else %}➕ Добавление имущества{% endif %}</h2>
+        <a href="{% url 'assets:asset_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+            <i class="bi bi-list-ul"></i> К списку
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="{{ form.inventory_number.id_for_label }}" class="form-label fw-semibold">{{ form.inventory_number.label }}</label>
+                            {{ form.inventory_number }}
+                            <div class="form-text">{{ form.inventory_number.help_text }}</div>
+                            {% if form.inventory_number.errors %}<div class="text-danger small">{{ form.inventory_number.errors }}</div>{% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.name.id_for_label }}" class="form-label fw-semibold">{{ form.name.label }} <span class="text-danger">*</span></label>
+                            {{ form.name }}
+                            {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors }}</div>{% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.category.id_for_label }}" class="form-label fw-semibold">{{ form.category.label }}</label>
+                            {{ form.category }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.description.id_for_label }}" class="form-label fw-semibold">{{ form.description.label }}</label>
+                            {{ form.description }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.serial_number.id_for_label }}" class="form-label fw-semibold">{{ form.serial_number.label }}</label>
+                            {{ form.serial_number }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.manufacturer.id_for_label }}" class="form-label fw-semibold">{{ form.manufacturer.label }}</label>
+                            {{ form.manufacturer }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.model.id_for_label }}" class="form-label fw-semibold">{{ form.model.label }}</label>
+                            {{ form.model }}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="{{ form.purchase_date.id_for_label }}" class="form-label fw-semibold">{{ form.purchase_date.label }}</label>
+                            {{ form.purchase_date }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.cost.id_for_label }}" class="form-label fw-semibold">{{ form.cost.label }}</label>
+                            {{ form.cost }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.useful_life_months.id_for_label }}" class="form-label fw-semibold">{{ form.useful_life_months.label }}</label>
+                            {{ form.useful_life_months }}
+                            <div class="form-text">Укажите срок полезного использования в месяцах (необязательно).</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.location.id_for_label }}" class="form-label fw-semibold">{{ form.location.label }}</label>
+                            {{ form.location }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.responsible_person.id_for_label }}" class="form-label fw-semibold">{{ form.responsible_person.label }}</label>
+                            {{ form.responsible_person }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.status.id_for_label }}" class="form-label fw-semibold">{{ form.status.label }}</label>
+                            {{ form.status }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.notes.id_for_label }}" class="form-label fw-semibold">{{ form.notes.label }}</label>
+                            {{ form.notes }}
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <button type="submit" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+                        <i class="bi bi-save"></i> Сохранить
+                    </button>
+                    <a href="{% url 'assets:asset_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+                        <i class="bi bi-x-circle"></i> Отмена
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

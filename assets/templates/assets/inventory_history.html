@@ -1,0 +1,64 @@
+{# assets/templates/assets/inventory_history.html #}
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}История инвентаризаций{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2><i class="bi bi-clock-history text-primary me-2"></i>История инвентаризаций</h2>
+        <a href="{% url 'assets:inventory_scan' %}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+            <i class="bi bi-qr-code-scan"></i> Сканировать
+        </a>
+    </div>
+
+    <div class="card card-table">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-modern table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>№</th>
+                            <th>Имущество</th>
+                            <th>Инв. номер</th>
+                            <th>Кто отметил</th>
+                            <th>Дата</th>
+                            <th>Состояние</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for check in page_obj %}
+                        <tr>
+                            <td>{{ forloop.counter }}</td>
+                            <td>
+                                <a href="{% url 'assets:asset_detail' check.asset.pk %}" class="fw-semibold">
+                                    {{ check.asset.name }}
+                                </a>
+                            </td>
+                            <td>{{ check.asset.inventory_number }}</td>
+                            <td>{{ check.checked_by|get_user_name|default:"—" }}</td>
+                            <td>{{ check.checked_at|date:"d.m.Y H:i" }}</td>
+                            <td>
+                                <span class="badge-status 
+                                    {% if check.condition == 'good' %}bg-success
+                                    {% elif check.condition == 'needs_repair' %}bg-warning text-dark
+                                    {% elif check.condition == 'damaged' %}bg-danger
+                                    {% elif check.condition == 'written_off' %}bg-secondary
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ check.get_condition_display }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="text-center py-5 text-muted">Записей инвентаризации пока нет.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% include 'includes/pagination.html' with page_obj=page_obj %}
+</div>
+{% endblock %}

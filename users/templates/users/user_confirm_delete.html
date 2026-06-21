@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}Удаление пользователя{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h3>Вы уверены, что хотите удалить пользователя "{{ user.username }}"?</h3>
+            <p class="text-danger"><i class="bi bi-exclamation-triangle"></i> Это действие нельзя отменить.</p>
+            <form method="post">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger">Удалить</button>
+                <a href="{% url 'users:user_list' %}" class="btn btn-outline-secondary">Отмена</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

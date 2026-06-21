@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Все баги (админ){% endblock %}
+{% block content %}
+<h2 class="mb-4">🐞 Все баги</h2>
+<table class="table table-bordered table-hover">
+    <thead class="table-dark">
+        <tr>
+            <th>ID</th>
+            <th>Пользователь</th>
+            <th>Заголовок</th>
+            <th>Статус</th>
+            <th>Дата</th>
+            <th>Детали</th>
+            <th>Управление</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for b in bugs %}
+    <tr>
+        <td>{{ b.id }}</td>
+        <td>{{ b.user.get_full_name|default:b.user.username }}</td>
+        <td><a href="{% url 'feedback:bug_detail' b.id %}">{{ b.title }}</a></td>
+        <td>
+            {% if b.status == 'new' %}<span class="badge bg-secondary">Новый</span>
+            {% elif b.status == 'in_progress' %}<span class="badge bg-primary">В работе</span>
+            {% elif b.status == 'fixed' %}<span class="badge bg-success">Исправлен</span>
+            {% else %}<span class="badge bg-dark">Закрыт</span>{% endif %}
+        </td>
+        <td>{{ b.created_at|date:"d.m.Y H:i" }}</td>
+        <td><a href="{% url 'feedback:bug_detail' b.id %}" class="btn btn-sm btn-info">Просмотр</a></td>
+        <td><a href="{% url 'feedback:change_bug_status' b.id %}" class="btn btn-sm btn-warning">Изменить статус</a></td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7">Нет багов.{% endfor %}
+    </tbody>
+</table>
+{% endblock %}

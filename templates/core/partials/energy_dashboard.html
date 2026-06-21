@@ -1,0 +1,269 @@
+{% load custom_filters %}
+
+<style>
+    .btn-expand {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.7rem;
+        line-height: 1;
+    }
+    .stat-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+    .clickable-row {
+        cursor: pointer;
+    }
+</style>
+
+<!-- Компактный фильтр по типу ресурса (год и месяц берутся из основного фильтра) -->
+<div class="row align-items-center mb-3">
+    <div class="col-auto">
+        <form method="get" class="d-flex align-items-center gap-2 flex-wrap" id="energyFilterForm">
+            <div class="d-flex align-items-center">
+                <label for="resource_type" class="form-label me-1 mb-0 small">Тип ресурса:</label>
+                <select name="resource_type" id="resource_type" class="form-select form-select-sm rounded-pill" style="width: auto;">
+                    <option value="all" {% if selected_resource_type == 'all' %}selected{% endif %}>Все</option>
+                    {% for rt in resource_types %}
+                    <option value="{{ rt.id }}" {% if selected_resource_type|stringformat:"s" == rt.id|stringformat:"s" %}selected{% endif %}>{{ rt.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary rounded-pill">Применить</button>
+            {% if selected_resource_type != 'all' %}
+            <a href="?{% if request.GET.year %}year={{ request.GET.year }}&{% endif %}{% if request.GET.month %}month={{ request.GET.month }}&{% endif %}resource_type=all" class="btn btn-sm btn-outline-secondary rounded-pill">Сбросить</a>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<!-- KPI -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center py-3">
+                <div class="flex-shrink-0 me-2">
+                    <i class="bi bi-lightning-charge-fill fs-2" style="color: #e67e22;"></i>
+                </div>
+                <div>
+                    <div class="text-uppercase fw-semibold text-muted">Общее потребление</div>
+                    <div class="fw-bold fs-5">{{ data.total_consumption|floatformat:0 }} {{ data.unit }}</div>
+                    <small class="text-muted">за {{ data.month_name }} {{ data.year }}</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center py-3">
+                <div class="flex-shrink-0 me-2">
+                    <i class="bi bi-grid-3x3-gap-fill fs-2" style="color: #e67e22;"></i>
+                </div>
+                <div>
+                    <div class="text-uppercase fw-semibold text-muted">Активных счётчиков</div>
+                    <div class="fw-bold fs-5">{{ data.meter_count }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center py-3">
+                <div class="flex-shrink-0 me-2">
+                    <i class="bi bi-exclamation-triangle-fill fs-2" style="color: #e67e22;"></i>
+                </div>
+                <div>
+                    <div class="text-uppercase fw-semibold text-muted">Аномалий</div>
+                    <div class="fw-bold fs-5">{{ data.anomaly_count }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Динамика потребления -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card card-modern shadow-sm rounded-4">
+            <div class="card-header bg-transparent border-0 pt-4 pb-0 d-flex justify-content-between align-items-center">
+                <h5 class="card-title fw-semibold"><i class="bi bi-graph-up me-2 text-primary"></i>Динамика потребления за {{ data.month_name }} {{ data.year }}</h5>
+                <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle" data-bs-toggle="modal" data-bs-target="#energyChartModal">
+                    <i class="bi bi-arrows-angle-expand"></i>
+                </button>
+            </div>
+            <div class="card-body pt-3">
+                <canvas id="energyChart" height="200" style="max-height: 200px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Круговая диаграмма + Топ-5 счётчиков -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card card-modern shadow-sm rounded-4 p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-semibold mb-0">Распределение по типам ресурсов</h6>
+                <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle" data-bs-toggle="modal" data-bs-target="#resourcePieModal">
+                    <i class="bi bi-arrows-angle-expand"></i>
+                </button>
+            </div>
+            <canvas id="resourcePieChart" height="200" style="max-height: 200px;"></canvas>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card card-modern shadow-sm rounded-4 p-3 h-100">
+            <h6 class="fw-semibold mb-3"><i class="bi bi-trophy-fill text-warning me-2"></i>Топ-5 счётчиков по потреблению</h6>
+            <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr><th>Счётчик</th><th>Потребление ({{ data.unit }})</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for m in data.top_meters %}
+                        <tr>
+                            <td class="fw-semibold"><a href="{% url 'energy:meter_detail' m.meter.pk %}">{{ m.meter.serial_number }}</a></td>
+                            <td>{{ m.consumption|floatformat:2 }}</td>
+                        </tr>
+                        {% empty %}
+                        <td><td colspan="2" class="text-center text-muted py-3">Нет данных</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Аномалии потребления -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card card-modern shadow-sm rounded-4">
+            <div class="card-header bg-transparent border-0 pt-4 pb-0 d-flex justify-content-between align-items-center">
+                <h5 class="card-title fw-semibold"><i class="bi bi-exclamation-diamond me-2 text-primary"></i>Аномалии потребления (последние 10)</h5>
+                <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle" data-bs-toggle="modal" data-bs-target="#anomalyModal">
+                    <i class="bi bi-arrows-angle-expand"></i>
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr><th>Дата</th><th>Счётчик</th><th>Потребление</th><th>Среднее (6 мес.)</th><th>Коэффициент</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for a in data.anomalies %}
+                            <tr>
+                                <td>{{ a.date|date:"d.m.Y" }}</td>
+                                <td><a href="{% url 'energy:meter_detail' a.meter.pk %}">{{ a.meter.serial_number }}</a></td>
+                                <td>{{ a.consumption|floatformat:2 }} {{ a.meter.resource_type.unit }}</td>
+                                <td>{{ a.avg|floatformat:2 }} {{ a.meter.resource_type.unit }}</td>
+                                <td><span class="badge bg-danger">{{ a.ratio|floatformat:1 }}x</span></td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5" class="text-center text-muted py-3">Нет аномалий</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальные окна -->
+<div class="modal fade" id="energyChartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Динамика потребления за {{ data.month_name }} {{ data.year }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><canvas id="energyChartModalCanvas" height="400"></canvas></div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="resourcePieModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Распределение по типам ресурсов</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><canvas id="resourcePieModalCanvas" height="400"></canvas></div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="anomalyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Аномалии потребления (полный список)</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr><th>Дата</th><th>Счётчик</th><th>Потребление</th><th>Среднее (6 мес.)</th><th>Коэффициент</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for a in data.anomalies %}
+                            <tr><td>{{ a.date|date:"d.m.Y" }}</td><td><a href="{% url 'energy:meter_detail' a.meter.pk %}">{{ a.meter.serial_number }}</a></td><td>{{ a.consumption|floatformat:2 }} {{ a.meter.resource_type.unit }}</td><td>{{ a.avg|floatformat:2 }} {{ a.meter.resource_type.unit }}</td><td><span class="badge bg-danger">{{ a.ratio|floatformat:1 }}x</span></td></tr>
+                            {% empty %}<tr><td colspan="5" class="text-center">Нет аномалий</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dayLabels = {{ data.day_labels|safe }};
+    const currentData = {{ data.current_data|safe }};
+    const prevData = {{ data.prev_data|safe }};
+    const resourceLabels = {{ data.resource_labels|safe }};
+    const resourceData = {{ data.resource_data|safe }};
+
+    // График динамики
+    new Chart(document.getElementById('energyChart'), {
+        type: 'line',
+        data: {
+            labels: dayLabels,
+            datasets: [
+                { label: 'Текущий месяц', data: currentData, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.1)', fill: true, tension: 0.3 },
+                { label: 'Аналогичный месяц прошлого года', data: prevData, borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.1)', fill: true, tension: 0.3 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: true, plugins: { tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw.toFixed(2)} {{ data.unit }}` } } } }
+    });
+
+    // Круговая диаграмма
+    new Chart(document.getElementById('resourcePieChart'), {
+        type: 'pie',
+        data: { labels: resourceLabels, datasets: [{ data: resourceData, backgroundColor: ['#2563eb','#10b981','#f59e0b','#ef4444','#6b7280','#f97316'] }] },
+        options: { responsive: true }
+    });
+
+    // Модальные окна (увеличенные копии)
+    let modalCharts = {};
+    function createModalChart(chartId, type, dataConfig, options) {
+        const canvas = document.getElementById(chartId);
+        if (!canvas) return null;
+        return new Chart(canvas.getContext('2d'), { type, data: dataConfig, options });
+    }
+
+    document.getElementById('energyChartModal').addEventListener('shown.bs.modal', function () {
+        if (modalCharts.energy) modalCharts.energy.destroy();
+        modalCharts.energy = createModalChart('energyChartModalCanvas', 'line', {
+            labels: dayLabels,
+            datasets: [
+                { label: 'Текущий месяц', data: currentData, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.1)', fill: true, tension: 0.3 },
+                { label: 'Аналогичный месяц прошлого года', data: prevData, borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.1)', fill: true, tension: 0.3 }
+            ]
+        }, { responsive: true, maintainAspectRatio: true });
+    });
+    document.getElementById('energyChartModal').addEventListener('hidden.bs.modal', function () { if (modalCharts.energy) modalCharts.energy.destroy(); });
+
+    document.getElementById('resourcePieModal').addEventListener('shown.bs.modal', function () {
+        if (modalCharts.resource) modalCharts.resource.destroy();
+        modalCharts.resource = createModalChart('resourcePieModalCanvas', 'pie', { labels: resourceLabels, datasets: [{ data: resourceData, backgroundColor: ['#2563eb','#10b981','#f59e0b','#ef4444','#6b7280','#f97316'] }] }, { responsive: true });
+    });
+    document.getElementById('resourcePieModal').addEventListener('hidden.bs.modal', function () { if (modalCharts.resource) modalCharts.resource.destroy(); });
+});
+</script>

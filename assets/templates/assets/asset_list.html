@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}Имущество{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2><i class="bi bi-boxes text-primary me-2"></i> Имущество</h2>
+        {% if can_edit %}
+        <a href="{% url 'assets:asset_create' %}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+            <i class="bi bi-plus-circle"></i> Добавить имущество
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Вкладки по категориям (балансовым счетам) -->
+    <ul class="nav nav-tabs mb-3" id="categoryTabs">
+        <li class="nav-item">
+            <a class="nav-link {% if selected_category_id == 'all' or not selected_category_id %}active{% endif %}"
+               href="?{% if base_query %}{{ base_query }}&{% endif %}category_id=all">
+                <i class="bi bi-collection"></i> Все
+                <span class="badge bg-secondary rounded-pill ms-1">{{ total_assets }}</span>
+            </a>
+        </li>
+        {% for category in categories %}
+        <li class="nav-item">
+            <a class="nav-link {% if selected_category_id|stringformat:'s' == category.id|stringformat:'s' %}active{% endif %}"
+               href="?{% if base_query %}{{ base_query }}&{% endif %}category_id={{ category.id }}">
+                {{ category.name|truncatechars:10 }}
+                <span class="badge bg-secondary rounded-pill ms-1">{{ category.asset_count }}</span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <!-- Фильтры и поиск (без категории, так как она уже выбрана вкладкой) -->
+    <div class="search-group-wrapper">
+        <form method="get" class="d-inline-block w-auto">
+            <div class="input-group input-group-sm">
+                <input type="hidden" name="category_id" value="{{ selected_category_id }}">
+                <input type="text" name="search" class="form-control" placeholder="Поиск..." value="{{ search|default:'' }}">
+                <button type="submit" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1"><i class="bi bi-search"></i></button>
+                <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1 btn-toggle-filter" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse"><i class="bi bi-funnel"></i></button>
+                {% if search or selected_status or selected_responsible %}
+                <a href="{% url 'assets:asset_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1"><i class="bi bi-x-circle"></i></a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <div class="collapse mb-3" id="filterCollapse">
+        <div class="card filter-collapse-card">
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <input type="hidden" name="category_id" value="{{ selected_category_id }}">
+                    <div class="col-md-4">
+                        <label class="form-label">Статус</label>
+                        <select name="status" class="form-select form-select-sm">
+                            <option value="">Все</option>
+                            {% for code, name in status_choices %}
+                            <option value="{{ code }}" {% if selected_status == code %}selected{% endif %}>{{ name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Ответственный</label>
+                        <select name="responsible" class="form-select form-select-sm">
+                            <option value="">Все</option>
+                            {% for user in users %}
+                            <option value="{{ user.id }}" {% if selected_responsible|stringformat:"s" == user.id|stringformat:"s" %}selected{% endif %}>{{ user.get_full_name|default:user.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button type="submit" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">Применить</button>
+                        <a href="{% url 'assets:asset_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1 ms-2">Сбросить</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таблица -->
+    <div class="card card-table">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-modern table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Инв. №</th>
+                            <th>Наименование</th>
+                            <th>Балансовый счет</th>
+                            <th>Статус</th>
+                            <th>Ответственный</th>
+                            <th>Местонахождение</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for asset in assets %}
+                        <tr>
+                            <td><a href="{% url 'assets:asset_detail' asset.id %}" class="fw-semibold">{{ asset.inventory_number }}</a></td>
+                            <td>{{ asset.name }}</td>
+                            <td>{{ asset.category.name|default:"—" }}</td>
+                            <td>
+                                <span class="badge-status
+                                    {% if asset.status == 'in_use' %}bg-success
+                                    {% elif asset.status == 'in_stock' %}bg-info
+                                    {% elif asset.status == 'under_repair' %}bg-warning text-dark
+                                    {% elif asset.status == 'written_off' %}bg-secondary
+                                    {% else %}bg-danger{% endif %}">
+                                    {{ asset.get_status_display }}
+                                </span>
+                            </td>
+                            <td>{{ asset.responsible_person|get_user_name|default:"—" }}</td>
+                            <td>{{ asset.location|default:"—" }}</td>
+                            <td>
+                                <div class="btn-group btn-group-sm gap-1" role="group">
+                                    <a href="{% url 'assets:asset_detail' asset.id %}" class="btn-icon-circle btn-icon-circle-sm btn-icon-circle-info" title="Просмотр"><i class="bi bi-eye"></i></a>
+                                    {% if can_edit %}
+                                    <a href="{% url 'assets:asset_edit' asset.id %}" class="btn-icon-circle btn-icon-circle-sm btn-icon-circle-warning" title="Редактировать"><i class="bi bi-pencil"></i></a>
+                                    {% endif %}
+                                    {% if can_delete %}
+                                    <a href="{% url 'assets:asset_delete' asset.id %}" class="btn-icon-circle btn-icon-circle-sm btn-icon-circle-danger" onclick="return confirm('Удалить {{ asset.name }}?')" title="Удалить"><i class="bi bi-trash"></i></a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="7" class="text-center py-5 text-muted">Имущество не найдено.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Пагинация -->
+    {% include 'includes/pagination.html' with page_obj=page_obj %}
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "admin/change_list.html" %}
+
+{% block result_list %}
+    <div class="results">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Серийный номер счётчика</th>
+                    <th>Количество показаний</th>
+                    <th>Действие</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in cl.result_list %}
+                <tr>
+                    <td>{{ item.meter_serial|default:"(без номера)" }}</td>
+                    <td>{{ item.readings_count }}</td>
+                    <td><a href="{% url 'admin:energy_archivedreading_changelist' %}?meter_serial__exact={{ item.meter_serial }}">Показать показания</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}Приостановить заявку{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Приостановка заявки №{{ req.request_number|escape }}</h2>
+    <p>Текущий статус: {{ req.get_status_display|escape }}</p>
+    <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label class="form-label">Причина приостановки</label>
+            <textarea name="suspension_reason" class="form-control" rows="3" required></textarea>
+        </div>
+        <button type="submit" class="btn btn-warning">Приостановить</button>
+        <a href="{% url 'requests_app:request_detail' req.pk %}" class="btn btn-secondary">Отмена</a>
+    </form>
+</div>
+{% endblock %}

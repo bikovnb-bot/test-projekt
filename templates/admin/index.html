@@ -1,0 +1,39 @@
+{% extends "admin/index.html" %}
+{% load i18n static %}
+
+{% block content %}
+<div id="content-main">
+    <div class="dashboard-module">
+        <h2>{% trans "Быстрый доступ" %}</h2>
+        <div class="dashboard-card-container">
+            <div class="card">
+                <h3>📋 Заявки</h3>
+                <p>Управление заявками, статусы, назначение.</p>
+                <a href="{% url 'admin:requests_app_servicerequest_changelist' %}" class="button">Перейти</a>
+            </div>
+            <div class="card">
+                <h3>📄 Договоры</h3>
+                <p>Эксплуатационные договоры, оплаты, документы.</p>
+                <a href="{% url 'admin:exploitation_app_operationcontract_changelist' %}" class="button">Перейти</a>
+            </div>
+            <div class="card">
+                <h3>🏢 Здания</h3>
+                <p>Справочник зданий, секций, документов.</p>
+                <a href="{% url 'admin:buildings_building_changelist' %}" class="button">Перейти</a>
+            </div>
+            <div class="card">
+                <h3>🔌 Счётчики</h3>
+                <p>Приборы учёта, показания, тарифы, аномалии.</p>
+                <a href="{% url 'admin:energy_meter_changelist' %}" class="button">Перейти</a>
+            </div>
+            <div class="card">
+                <h3>👥 Пользователи</h3>
+                <p>Управление пользователями и ролями.</p>
+                <a href="{% url 'admin:auth_user_changelist' %}" class="button">Перейти</a>
+            </div>
+        </div>
+    </div>
+    <!-- Стандартные блоки приложений (список моделей) -->
+    {{ block.super }}
+</div>
+{% endblock %}

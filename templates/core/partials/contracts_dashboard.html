@@ -1,0 +1,449 @@
+{% load custom_filters %}
+
+<style>
+    .btn-expand {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.7rem;
+        line-height: 1;
+    }
+    .stat-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+    .clickable-row {
+        cursor: pointer;
+    }
+</style>
+
+<!-- KPI -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center py-3">
+                <div class="flex-shrink-0 me-2">
+                    <i class="bi bi-files fs-2" style="color: #e67e22;"></i>
+                </div>
+                <div>
+                    <div class="text-uppercase fw-semibold text-muted">Всего договоров</div>
+                    <div class="fw-bold fs-5">{{ data.total_contracts }}</div>
+                    <small class="text-muted">действующих: {{ data.active_contracts }}</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center py-3">
+                <div class="flex-shrink-0 me-2">
+                    <i class="bi bi-calculator-fill fs-2" style="color: #e67e22;"></i>
+                </div>
+                <div>
+                    <div class="text-uppercase fw-semibold text-muted">Общая сумма</div>
+                    <div class="fw-bold fs-5">{{ data.total_amount|decimal_comma }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center py-3">
+                <div class="flex-shrink-0 me-2">
+                    <i class="bi bi-credit-card-2-front-fill fs-2" style="color: #e67e22;"></i>
+                </div>
+                <div>
+                    <div class="text-uppercase fw-semibold text-muted">Оплачено</div>
+                    <div class="fw-bold fs-5">{{ data.total_paid|decimal_comma }}</div>
+                    <small class="text-muted">{{ data.avg_payment_percent }}% от суммы</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center py-3">
+                <div class="flex-shrink-0 me-2">
+                    <i class="bi bi-wallet2 fs-2" style="color: #e67e22;"></i>
+                </div>
+                <div>
+                    <div class="text-uppercase fw-semibold text-muted">Остаток к оплате</div>
+                    <div class="fw-bold fs-5">{{ data.remaining_debt|decimal_comma }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Сравнение оплат по годам + Круговая диаграмма -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card card-modern shadow-sm rounded-4 h-100">
+            <div class="card-header bg-transparent border-0 pt-4 pb-0 d-flex justify-content-between align-items-center">
+                <h5 class="card-title fw-semibold"><i class="bi bi-calendar-range me-2 text-primary"></i>Сравнение оплат по годам</h5>
+                <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle" data-bs-toggle="modal" data-bs-target="#yoyChartModal">
+                    <i class="bi bi-arrows-angle-expand"></i>
+                </button>
+            </div>
+            <div class="card-body pt-3">
+                <canvas id="yoyPaymentChart" height="200" style="max-height: 200px;"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card card-modern shadow-sm rounded-4 p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-semibold mb-0">Общая сумма по типам договоров</h6>
+                <div>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle me-1" data-bs-toggle="modal" data-bs-target="#typeTotalModal">
+                        <i class="bi bi-arrows-angle-expand"></i>
+                    </button>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle toggle-legend" data-chart="typeTotalChart">
+                        <i class="bi bi-eye-slash"></i>
+                    </button>
+                </div>
+            </div>
+            <canvas id="typeTotalChart" height="200" style="max-height: 200px;"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Топ-10 исполнителей + Истекающие (30 дней) -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent border-bottom pt-2 pb-2 d-flex justify-content-between align-items-center">
+                <h6 class="fw-semibold mb-0"><i class="bi bi-trophy-fill text-warning me-2"></i>Топ‑10 исполнителей по сумме договоров</h6>
+                <div>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle" data-bs-toggle="modal" data-bs-target="#topContractorsModal">
+                        <i class="bi bi-arrows-angle-expand"></i>
+                    </button>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle ms-1" id="exportTopContractorsPDF">
+                        <i class="bi bi-file-pdf text-danger"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>№</th>
+                                <th>Исполнитель</th>
+                                <th>Сумма (₽)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if data.top_contractors %}
+                                {% for contractor in data.top_contractors %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ contractor.contractor|truncatechars:40 }}</td>
+                                    <td class="fw-bold">{{ contractor.total_sum|space_thousands }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr><td colspan="3" class="text-center text-muted py-3">Нет данных</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent border-bottom pt-2 pb-2 d-flex justify-content-between align-items-center">
+                <h6 class="fw-semibold mb-0"><i class="bi bi-hourglass-split text-warning me-2"></i>Истекающие (30 дней)</h6>
+                <div>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle" data-bs-toggle="modal" data-bs-target="#expiringModal">
+                        <i class="bi bi-arrows-angle-expand"></i>
+                    </button>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle ms-1" id="exportExpiringPDF">
+                        <i class="bi bi-file-pdf text-danger"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
+                    {% if data.expiring_contracts %}
+                        {% for c in data.expiring_contracts %}
+                        <div class="list-group-item px-2 py-1 clickable-row" {% if c.id %}onclick="window.location.href='{% url 'exploitation_app:contract_detail' c.id %}'"{% else %}onclick="return false;"{% endif %}>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div class="fw-semibold small">
+                                    <i class="bi bi-file-text me-1 text-muted"></i>
+                                    {{ c.contract_number }}
+                                </div>
+                                <span class="badge bg-warning bg-opacity-25 text-dark px-2 py-0 rounded-pill">{{ c.end_date|date:"d.m.Y" }}</span>
+                            </div>
+                            <div class="small text-muted">
+                                <i class="bi bi-building"></i> {{ c.contractor|truncatechars:35 }}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="list-group-item text-center text-muted py-3">✅ Нет истекающих договоров</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальные окна -->
+<div class="modal fade" id="yoyChartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Сравнение оплат по годам</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><canvas id="yoyChartModalCanvas" height="400"></canvas></div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="typeTotalModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Общая сумма по типам договоров</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><canvas id="typeTotalModalCanvas" height="400"></canvas></div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="topContractorsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Топ-10 исполнителей по сумме договоров (полный список)</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr><th>№</th><th>Исполнитель</th><th>Сумма (₽)</th></tr>
+                        </thead>
+                        <tbody>
+                            {% if data.top_contractors %}
+                                {% for contractor in data.top_contractors %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ contractor.contractor }}</td>
+                                    <td class="fw-bold">{{ contractor.total_sum|space_thousands }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr><td colspan="3" class="text-center">Нет данных</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="expiringModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Истекающие договоры (30 дней) – полный список</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr><th>№ договора</th><th>Исполнитель</th><th>Дата окончания</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            {% for c in data.all_expiring_contracts %}
+                            <tr onclick="window.location.href='{% url 'exploitation_app:contract_detail' c.id %}'" style="cursor: pointer;">
+                                <td class="fw-semibold">{{ c.contract_number }}</td>
+                                <td>{{ c.contractor }}</td>
+                                <td>{{ c.end_date|date:"d.m.Y" }}</td>
+                                <td><i class="bi bi-arrow-right-circle text-primary"></i></td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-center text-muted py-3">Нет истекающих договоров</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Скрытые блоки для печати PDF -->
+<div id="printExpiringArea" style="display: none;">
+    <div style="padding:20px;font-family:'Inter',sans-serif">
+        <h3>Истекающие договоры (30 дней)</h3>
+        <table style="border-collapse:collapse;width:100%">
+            <thead>
+                <tr><th style="border:1px solid #ccc;padding:8px">№ договора</th><th style="border:1px solid #ccc;padding:8px">Исполнитель</th><th style="border:1px solid #ccc;padding:8px">Дата окончания</th></tr>
+            </thead>
+            <tbody>
+                {% for c in data.all_expiring_contracts %}
+                <tr>
+                    <td style="border:1px solid #ccc;padding:8px">{{ c.contract_number }}</td>
+                    <td style="border:1px solid #ccc;padding:8px">{{ c.contractor }}</td>
+                    <td style="border:1px solid #ccc;padding:8px">{{ c.end_date|date:"d.m.Y" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="3">Нет данных</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<div id="printTopContractorsArea" style="display: none;">
+    <div style="padding:20px;font-family:'Inter',sans-serif">
+        <h3>Топ-10 исполнителей по сумме договоров</h3>
+        <table style="border-collapse:collapse;width:100%">
+            <thead>
+                <tr><th style="border:1px solid #ccc;padding:8px">№</th><th style="border:1px solid #ccc;padding:8px">Исполнитель</th><th style="border:1px solid #ccc;padding:8px">Сумма (₽)</th></tr>
+            </thead>
+            <tbody>
+                {% for contractor in data.top_contractors %}
+                <tr>
+                    <td style="border:1px solid #ccc;padding:8px">{{ forloop.counter }}</td>
+                    <td style="border:1px solid #ccc;padding:8px">{{ contractor.contractor }}</td>
+                    <td style="border:1px solid #ccc;padding:8px">{{ contractor.total_sum|space_thousands }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Данные для графика сравнения оплат по годам
+    const yoyLabels = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+    const yearsData = {};
+    const datasets = [];
+    const colors = ['#2563eb', '#dc2626', '#10b981', '#f97316', '#8b5cf6'];
+
+    {% for year, payments in data.yoy_data.items %}
+        yearsData['{{ year }}'] = {{ payments|safe }};
+        datasets.push({
+            label: '{{ year }} г.',
+            data: {{ payments|safe }},
+            borderColor: colors[{{ forloop.counter0 }} % colors.length],
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            fill: false,
+            tension: 0.2,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointBackgroundColor: colors[{{ forloop.counter0 }} % colors.length],
+            pointBorderColor: '#fff',
+            pointBorderWidth: 1
+        });
+    {% endfor %}
+
+    new Chart(document.getElementById('yoyPaymentChart'), {
+        type: 'line',
+        data: { labels: yoyLabels, datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            let value = context.raw;
+                            let monthIndex = context.dataIndex;
+                            let currentYear = label.replace(' г.', '');
+                            let result = `${label}: ${value.toLocaleString()} ₽`;
+                            let years = Object.keys(yearsData).sort();
+                            let currentIdx = years.indexOf(currentYear);
+                            if (currentIdx > 0) {
+                                let prevYear = years[currentIdx - 1];
+                                let prevValue = yearsData[prevYear][monthIndex];
+                                if (prevValue !== undefined && prevValue !== 0) {
+                                    let percentChange = ((value - prevValue) / prevValue * 100).toFixed(1);
+                                    let sign = percentChange >= 0 ? '+' : '';
+                                    result += `\n→ ${prevYear}: ${prevValue.toLocaleString()} ₽ (${sign}${percentChange}%)`;
+                                }
+                            }
+                            return result;
+                        }
+                    }
+                },
+                legend: { position: 'top', labels: { font: { size: 11 } } }
+            },
+            scales: {
+                y: { ticks: { callback: val => val.toLocaleString() + ' ₽', font: { size: 10 } }, grid: { color: '#eef2f6' } },
+                x: { ticks: { font: { size: 10 } }, grid: { display: false } }
+            }
+        }
+    });
+
+    const typeTotalChart = new Chart(document.getElementById('typeTotalChart'), {
+        type: 'pie',
+        data: {
+            labels: {{ data.type_names|safe }},
+            datasets: [{ data: {{ data.type_totals|safe }}, backgroundColor: ['#2563eb','#10b981','#f59e0b','#ef4444','#6b7280','#f97316','#14b8a6','#8b5cf6'] }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } }, maintainAspectRatio: true }
+    });
+
+    let legendVisible = false;
+    const toggleBtn = document.querySelector('.toggle-legend[data-chart="typeTotalChart"]');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+            legendVisible = !legendVisible;
+            typeTotalChart.options.plugins.legend.display = legendVisible;
+            typeTotalChart.update();
+            const icon = this.querySelector('i');
+            if (legendVisible) {
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+            } else {
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+            }
+        });
+    }
+
+    let modalCharts = {};
+    function createModalChart(chartId, type, dataConfig, options) {
+        const canvas = document.getElementById(chartId);
+        if (!canvas) return null;
+        return new Chart(canvas.getContext('2d'), { type, data: dataConfig, options });
+    }
+
+    document.getElementById('yoyChartModal').addEventListener('shown.bs.modal', function () {
+        if (modalCharts.yoy) modalCharts.yoy.destroy();
+        modalCharts.yoy = createModalChart('yoyChartModalCanvas', 'line', {
+            labels: yoyLabels,
+            datasets: datasets
+        }, { responsive: true, maintainAspectRatio: true, scales: { y: { ticks: { callback: val => val.toLocaleString() + ' ₽' } } } });
+    });
+    document.getElementById('yoyChartModal').addEventListener('hidden.bs.modal', function () { if (modalCharts.yoy) modalCharts.yoy.destroy(); });
+
+    document.getElementById('typeTotalModal').addEventListener('shown.bs.modal', function () {
+        if (modalCharts.typeTotal) modalCharts.typeTotal.destroy();
+        modalCharts.typeTotal = createModalChart('typeTotalModalCanvas', 'pie', {
+            labels: {{ data.type_names|safe }},
+            datasets: [{ data: {{ data.type_totals|safe }}, backgroundColor: ['#2563eb','#10b981','#f59e0b','#ef4444','#6b7280','#f97316','#14b8a6','#8b5cf6'] }]
+        }, { responsive: true });
+    });
+    document.getElementById('typeTotalModal').addEventListener('hidden.bs.modal', function () { if (modalCharts.typeTotal) modalCharts.typeTotal.destroy(); });
+
+    // Экспорт PDF
+    document.getElementById('exportExpiringPDF')?.addEventListener('click', function() {
+        const printContent = document.getElementById('printExpiringArea').innerHTML;
+        const win = window.open('', '_blank');
+        win.document.write('<html><head><title>Истекающие договоры</title><style>body{font-family:"Inter",sans-serif;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f2f2f2}</style></head><body>' + printContent + '</body></html>');
+        win.document.close();
+        win.print();
+    });
+    document.getElementById('exportTopContractorsPDF')?.addEventListener('click', function() {
+        const printContent = document.getElementById('printTopContractorsArea').innerHTML;
+        const win = window.open('', '_blank');
+        win.document.write('<html><head><title>Топ-10 исполнителей</title><style>body{font-family:"Inter",sans-serif;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f2f2f2}</style></head><body>' + printContent + '</body></html>');
+        win.document.close();
+        win.print();
+    });
+});
+</script>

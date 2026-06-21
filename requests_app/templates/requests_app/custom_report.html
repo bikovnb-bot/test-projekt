@@ -1,0 +1,305 @@
+{% extends 'base.html' %}
+{% load custom_filters %}
+
+{% block title %}Настраиваемый отчёт по заявкам{% endblock %}
+
+{% block extra_css %}
+<style>
+    th.sortable {
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+        padding-right: 20px !important;
+    }
+    th.sortable:after {
+        content: '↕️';
+        position: absolute;
+        right: 5px;
+        top: 50%;
+        transform: translateY(-50%);
+        opacity: 0.5;
+        font-size: 0.7rem;
+    }
+    th.sortable.asc:after {
+        content: '▲';
+        opacity: 1;
+    }
+    th.sortable.desc:after {
+        content: '▼';
+        opacity: 1;
+    }
+    .card-filter {
+        border-radius: 16px;
+        overflow: hidden;
+    }
+    .filter-section {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 12px;
+        margin-bottom: 1rem;
+    }
+    .tab-content {
+        background-color: #fff;
+        border-radius: 0 0 12px 12px;
+        border: 1px solid #dee2e6;
+        border-top: none;
+        padding: 1.5rem;
+    }
+    .nav-tabs .nav-link {
+        font-weight: 500;
+        border-radius: 12px 12px 0 0;
+    }
+    .table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    .table thead th {
+        position: sticky;
+        top: 0;
+        background-color: #212529;
+        color: white;
+        z-index: 10;
+    }
+    .summary-card {
+        transition: transform 0.2s;
+    }
+    .summary-card:hover {
+        transform: translateY(-4px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+        <i class="bi bi-arrow-left"></i> Назад
+    </a>
+</div>
+
+<h2>📊 Настраиваемый отчёт по заявкам</h2>
+
+<div class="card card-filter shadow-sm mb-4">
+    <div class="card-header bg-primary text-white">
+        <i class="bi bi-funnel"></i> Фильтры и настройки
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3" id="reportForm">
+            <!-- Выбор колонок -->
+            <div class="col-md-12">
+                <label class="form-label fw-semibold"><i class="bi bi-columns"></i> Отображаемые колонки</label>
+                <div class="row row-cols-2 row-cols-md-4 g-2">
+                    {% for value, label in form.columns.field.choices %}
+                        <div class="col">
+                            <div class="form-check">
+                                <input type="checkbox" name="columns" value="{{ value }}" id="col_{{ value }}" class="form-check-input"
+                                    {% if value in form.columns.value %}checked{% endif %}>
+                                <label for="col_{{ value }}" class="form-check-label">{{ label }}</label>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Фильтры -->
+            <div class="col-md-12 filter-section">
+                <div class="row g-2">
+                    <div class="col-md-2">{{ form.status.label_tag }} {{ form.status }}</div>
+                    <div class="col-md-2">{{ form.priority.label_tag }} {{ form.priority }}</div>
+                    <div class="col-md-3">{{ form.building.label_tag }} {{ form.building }}</div>
+                    <div class="col-md-3">{{ form.request_type.label_tag }} {{ form.request_type }}</div>
+                    <div class="col-md-2">{{ form.room_number.label_tag }} {{ form.room_number }}</div>
+                    <div class="col-md-3">{{ form.assigned_to.label_tag }} {{ form.assigned_to }}</div>
+                    <div class="col-md-3">{{ form.created_by.label_tag }} {{ form.created_by }}</div>
+                    <div class="col-md-3">{{ form.date_from.label_tag }} {{ form.date_from }}</div>
+                    <div class="col-md-3">{{ form.date_to.label_tag }} {{ form.date_to }}</div>
+                </div>
+            </div>
+
+            <div class="col-md-12 d-flex justify-content-center gap-2 flex-wrap">
+                <a href="{% url 'requests_app:custom_report' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+                    <i class="bi bi-eraser"></i> Сбросить всё
+                </a>
+                <button type="submit" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+                    <i class="bi bi-search"></i> Сформировать
+                </button>
+                <button type="submit" name="export" value="1" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1">
+                    <i class="bi bi-file-earmark-excel"></i> Экспорт Excel
+                </button>
+                <button type="submit" name="export" value="csv" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1">
+                    <i class="bi bi-file-earmark-text"></i> Экспорт CSV
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if data %}
+    <!-- Сводка -->
+    <div class="row mb-4 g-3">
+        <div class="col-md-4">
+            <div class="card summary-card shadow-sm border-0">
+                <div class="card-body text-center">
+                    <i class="bi bi-file-text fs-1 text-primary"></i>
+                    <h3 class="mt-2">{{ data|length }}</h3>
+                    <p class="text-muted">Всего заявок</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card summary-card shadow-sm border-0">
+                <div class="card-body text-center">
+                    <i class="bi bi-flag fs-1 text-warning"></i>
+                    <h3 class="mt-2">{{ data|length }}</h3>
+                    <p class="text-muted">С разным приоритетом</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card summary-card shadow-sm border-0">
+                <div class="card-body text-center">
+                    <i class="bi bi-calendar-check fs-1 text-success"></i>
+                    <h3 class="mt-2">{{ data|length }}</h3>
+                    <p class="text-muted">Записей в отчёте</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Вкладки -->
+    <ul class="nav nav-tabs" id="reportTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="table-tab" data-bs-toggle="tab" data-bs-target="#tablePane" type="button" role="tab">
+                <i class="bi bi-table"></i> Таблица
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="analytics-tab" data-bs-toggle="tab" data-bs-target="#analyticsPane" type="button" role="tab">
+                <i class="bi bi-graph-up"></i> Аналитика
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="reportTabContent">
+        <!-- Таблица -->
+        <div class="tab-pane fade show active" id="tablePane" role="tabpanel">
+            <div class="card shadow-sm">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0 align-middle" id="reportTable">
+                            <thead class="table-dark">
+                                <tr class="text-center">
+                                    {% for col in columns %}
+                                        <th class="sortable" data-sort="{{ col }}">
+                                            {{ column_labels|get_item:col }}
+                                        </th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in data %}
+                                <tr class="text-center align-middle">
+                                    {% for col in columns %}
+                                        <td>{{ row|get_item:col|striptags|truncatechars:50|default:"—" }}</td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Аналитика -->
+        <div class="tab-pane fade" id="analyticsPane" role="tabpanel">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    {% if status_labels %}
+                        <canvas id="statusChart" height="100"></canvas>
+                    {% else %}
+                        <div class="alert alert-info text-center">Нет данных для построения графика.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% elif request.GET %}
+    <div class="alert alert-info">По заданным критериям заявки не найдены.</div>
+{% else %}
+    <div class="alert alert-secondary">Выберите колонки и фильтры, затем нажмите "Сформировать".</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // ========== СОРТИРОВКА ТАБЛИЦЫ ==========
+    const table = document.getElementById('reportTable');
+    if (table) {
+        const getSortKey = (row, colIndex) => {
+            const cell = row.cells[colIndex];
+            if (!cell) return '';
+            let text = cell.innerText.trim().toLowerCase();
+            let num = parseFloat(text.replace(/\s/g, '').replace(',', '.'));
+            if (!isNaN(num)) return num;
+            return text;
+        };
+
+        const sortTable = (th, colIndex, ascending) => {
+            const tbody = table.tBodies[0];
+            const rows = Array.from(tbody.rows);
+            rows.sort((a, b) => {
+                let aVal = getSortKey(a, colIndex);
+                let bVal = getSortKey(b, colIndex);
+                if (typeof aVal === 'number' && typeof bVal === 'number') {
+                    return ascending ? aVal - bVal : bVal - aVal;
+                }
+                aVal = String(aVal);
+                bVal = String(bVal);
+                return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            });
+            rows.forEach(row => tbody.appendChild(row));
+        };
+
+        document.querySelectorAll('th.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const colIndex = th.cellIndex;
+                const currentDir = th.classList.contains('asc') ? 'asc' : (th.classList.contains('desc') ? 'desc' : null);
+                let newAscending = true;
+                if (currentDir === 'asc') newAscending = false;
+                document.querySelectorAll('th.sortable').forEach(t => t.classList.remove('asc', 'desc'));
+                th.classList.add(newAscending ? 'asc' : 'desc');
+                sortTable(th, colIndex, newAscending);
+            });
+        });
+    }
+
+    // ========== ГРАФИК СТАТУСОВ ==========
+    const statusLabels = {{ status_labels|safe }};
+    const statusData = {{ status_data|safe }};
+    const ctx = document.getElementById('statusChart');
+    if (ctx && statusLabels.length) {
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: statusLabels,
+                datasets: [{
+                    label: 'Количество заявок',
+                    data: statusData,
+                    backgroundColor: '#0d6efd',
+                    borderColor: '#0d6efd',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

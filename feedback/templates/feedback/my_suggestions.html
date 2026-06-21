@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Мои предложения{% endblock %}
+{% block content %}
+<h2 class="mb-4">💡 Мои предложения</h2>
+{% if suggestions %}
+<table class="table table-hover">
+    <thead class="table-light">
+        <tr><th>Заголовок</th><th>Статус</th><th>Дата</th><th>Действия</th></tr>
+    </thead>
+    <tbody>
+    {% for s in suggestions %}
+    <tr>
+        <td>{{ s.title }}</td>
+        <td>
+            {% if s.status == 'pending' %}<span class="badge bg-warning text-dark">На рассмотрении</span>
+            {% elif s.status == 'approved' %}<span class="badge bg-success">Одобрено</span>
+            {% else %}<span class="badge bg-danger">Отклонено</span>{% endif %}
+        </td>
+        <td>{{ s.created_at|date:"d.m.Y H:i" }}</td>
+        <td><a href="{% url 'feedback:suggestion_detail' s.id %}" class="btn btn-sm btn-outline-secondary">Подробнее</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>У вас пока нет предложений. <a href="{% url 'feedback:add_suggestion' %}">Создать первое →</a></p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}Возобновить заявку{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Возобновление заявки №{{ req.request_number|escape }}</h2>
+    <p>Текущий статус: {{ req.get_status_display|escape }}</p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-info">Возобновить</button>
+        <a href="{% url 'requests_app:request_detail' req.pk %}" class="btn btn-secondary">Отмена</a>
+    </form>
+</div>
+{% endblock %}

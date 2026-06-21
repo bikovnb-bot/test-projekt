@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}Энергетический дашборд{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sortablejs@latest/css/sortable.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <h2 class="fw-semibold"><i class="bi bi-speedometer2 text-primary me-2"></i> Энергетический дашборд</h2>
+        <button class="btn btn-outline-secondary rounded-pill px-4" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel"><i class="bi bi-funnel"></i> Фильтры и настройки</button>
+    </div>
+
+    <!-- Панель фильтров -->
+    <div class="collapse mb-4" id="filterPanel">
+        <div class="card filter-panel border-0">
+            <div class="card-body">
+                <form id="dashboardForm" method="get" class="row g-3">
+                    {% csrf_token %}
+                    <div class="col-md-2"><label class="form-label fw-semibold">Период</label><select name="period" id="periodSelect" class="form-select rounded-pill"><option value="month" {% if period_type == 'month' %}selected{% endif %}>Месяц</option><option value="quarter" {% if period_type == 'quarter' %}selected{% endif %}>Квартал</option><option value="year" {% if period_type == 'year' %}selected{% endif %}>Год</option></select></div>
+                    <div class="col-md-2"><label class="form-label fw-semibold">Год</label><select name="year" id="yearSelect" class="form-select rounded-pill">{% for y in years %}<option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></div>
+                    <div class="col-md-2" id="monthDiv" {% if period_type != 'month' %}style="display:none;"{% endif %}><label class="form-label fw-semibold">Месяц</label><select name="month" id="monthSelect" class="form-select rounded-pill">{% for m in months %}<option value="{{ m.0 }}" {% if m.0 == selected_month %}selected{% endif %}>{{ m.1 }}</option>{% endfor %}</select></div>
+                    <div class="col-md-2" id="quarterDiv" {% if period_type != 'quarter' %}style="display:none;"{% endif %}><label class="form-label fw-semibold">Квартал</label><select name="quarter" id="quarterSelect" class="form-select rounded-pill">{% for q in quarters %}<option value="{{ q }}" {% if q == selected_quarter %}selected{% endif %}>{{ q }} квартал</option>{% endfor %}</select></div>
+                    <div class="col-md-2"><label class="form-label fw-semibold">Тип ресурса</label><select name="resource_type" id="resourceTypeSelect" class="form-select rounded-pill"><option value="all" {% if selected_resource_type == 'all' %}selected{% endif %}>Все</option>{% for rt in resource_types %}<option value="{{ rt.id }}" {% if selected_resource_type|stringformat:"s" == rt.id|stringformat:"s" %}selected{% endif %}>{{ rt.name }}</option>{% endfor %}</select></div>
+                    <div class="col-md-2"><label class="form-label fw-semibold">Порог аномалии (раз)</label><input type="number" step="0.1" name="threshold" id="thresholdInput" class="form-control rounded-pill" value="{{ anomaly_threshold }}"></div>
+                    <div class="col-md-12"><button type="submit" class="btn btn-primary rounded-pill px-4">Применить</button><button type="button" id="saveLayoutBtn" class="btn btn-outline-success rounded-pill px-4 ms-2">Сохранить расположение виджетов</button></div>
+                </form>
+                <hr class="my-3">
+                <label class="form-label fw-semibold">Выберите виджеты:</label>
+                <div class="row g-2 mt-2">
+                    {% for w_id, w_info in available_widgets.items %}
+                    <div class="col-auto"><div class="form-check"><input class="form-check-input widget-toggle" type="checkbox" value="{{ w_id }}" id="widget_{{ w_id }}" {% if w_id in selected_widgets %}checked{% endif %}><label class="form-check-label" for="widget_{{ w_id }}">{{ w_info.title }}</label></div></div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Виджеты -->
+    <div id="widgets-container" class="row g-4">
+        {% for w_id in widget_order %}{% if w_id in selected_widgets %}
+        <div class="col-md-6 col-lg-4 widget-card" data-widget-id="{{ w_id }}">
+            <div class="card h-100 border-0 shadow-sm rounded-4">
+                <div class="widget-header bg-transparent">{{ available_widgets|get_item:w_id|get_item:'title' }}</div>
+                <div class="widget-body">
+                    {% with data=widgets_data|get_item:w_id %}
+                        {% if w_id == 'kpi' %}
+                            <div class="row g-3">
+                                <div class="col-6"><div class="kpi-card text-center" style="background: linear-gradient(135deg,#2563eb,#1e40af)"><h6>Общее потребление</h6><h3>{{ data.total_consumption|floatformat:0 }} {{ data.unit }}</h3><small>за период</small></div></div>
+                                <div class="col-6"><div class="kpi-card text-center" style="background: linear-gradient(135deg,#10b981,#047857)"><h6>Активных счётчиков</h6><h3>{{ data.meter_count }}</h3></div></div>
+                                <div class="col-6"><div class="kpi-card text-center" style="background: linear-gradient(135deg,#f59e0b,#d97706)"><h6>Аномалий</h6><h3>{{ data.anomaly_count }}</h3></div></div>
+                            </div>
+                        {% elif w_id == 'consumption_chart' %}
+                            <div class="chart-container"><canvas id="consumptionChartCanvas" height="200"></canvas><div class="text-end mt-2"><button class="btn btn-sm btn-outline-secondary rounded-pill export-chart" data-chart-id="consumptionChartCanvas" data-filename="consumption_chart.png">📸 Экспорт PNG</button></div></div>
+                        {% elif w_id == 'resource_pie' %}<div class="chart-container"><canvas id="resourcePieCanvas" height="220"></canvas></div>
+                        {% elif w_id == 'top_meters' %}
+                            <div class="table-responsive"><table class="table table-modern table-hover">{% for item in data %}<tr><td><a href="{% url 'energy:meter_detail' item.meter.pk %}">{{ item.meter.serial_number }}</a></td><td>{{ item.consumption|floatformat:2 }} {{ item.unit }}</td></tr>{% empty %}<tr><td colspan="2">Нет данных</td></tr>{% endfor %}</table></div>
+                        {% elif w_id == 'anomaly_table' %}
+                            <div class="table-responsive"><table class="table table-modern table-striped">{% for a in data %}<tr><td>{{ a.date|date:"d.m.Y" }}</td><td><a href="{% url 'energy:meter_detail' a.meter.pk %}">{{ a.meter.serial_number }}</a></td><td>{{ a.consumption|floatformat:2 }} {{ a.meter.resource_type.unit }}</td><td>{{ a.avg|floatformat:2 }} {{ a.meter.resource_type.unit }}</td><td><span class="badge bg-danger rounded-pill">{{ a.ratio|floatformat:1 }}x</span></td></tr>{% empty %}<tr><td colspan="5">Нет аномалий</td></tr>{% endfor %}</table></div>
+                        {% elif w_id == 'recent_readings' %}
+                            <div class="table-responsive"><table class="table table-modern">{% for r in data %}<tr><td><a href="{% url 'energy:meter_detail' r.meter.pk %}">{{ r.meter.serial_number }}</a></td><td>{{ r.date|date:"d.m.Y" }}</td><td>{{ r.consumption|floatformat:2 }} {{ r.unit }}</td></tr>{% empty %}<tr><td colspan="3">Нет показаний</td></tr>{% endfor %}</table></div>
+                        {% endif %}
+                    {% endwith %}
+                </div>
+            </div>
+        </div>{% endif %}{% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const periodSelect = document.getElementById('periodSelect'), monthDiv = document.getElementById('monthDiv'), quarterDiv = document.getElementById('quarterDiv');
+        function togglePeriod() { if (periodSelect.value === 'month') { monthDiv.style.display = 'block'; quarterDiv.style.display = 'none'; } else if (periodSelect.value === 'quarter') { monthDiv.style.display = 'none'; quarterDiv.style.display = 'block'; } else { monthDiv.style.display = 'none'; quarterDiv.style.display = 'none'; } }
+        periodSelect.addEventListener('change', togglePeriod); togglePeriod();
+
+        function saveDashboardSettings() {
+            const widgets = [], order = [];
+            document.querySelectorAll('.widget-card').forEach(card => { const wid = card.dataset.widgetId; widgets.push(wid); order.push(wid); });
+            fetch('{% url "energy:save_dashboard_settings" %}', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+                body: JSON.stringify({ widgets, order, period: periodSelect.value, year: document.getElementById('yearSelect').value, month: document.getElementById('monthSelect')?.value||'', quarter: document.getElementById('quarterSelect')?.value||'', resource_type: document.getElementById('resourceTypeSelect').value, threshold: document.getElementById('thresholdInput').value })
+            }).then(r=>r.json()).then(data=>{ if(data.status==='ok') console.log('Saved'); });
+        }
+        document.querySelectorAll('.widget-toggle').forEach(cb => cb.addEventListener('change', function() { const widgetId = this.value; const card = document.querySelector(`.widget-card[data-widget-id="${widgetId}"]`); if (this.checked) { if (!card) location.reload(); else card.style.display = ''; } else if(card) card.style.display = 'none'; saveDashboardSettings(); }));
+        const container = document.getElementById('widgets-container'); if(container) new Sortable(container, { animation:150, handle:'.widget-header', onEnd:()=>saveDashboardSettings() });
+        document.getElementById('saveLayoutBtn')?.addEventListener('click',()=>{ saveDashboardSettings(); alert('Расположение сохранено'); });
+        const consumptionCtx = document.getElementById('consumptionChartCanvas')?.getContext('2d');
+        if(consumptionCtx) new Chart(consumptionCtx, { type:'line', data:{ labels: {{ widgets_data.consumption_chart.labels|safe }}, datasets:[{ label:'Текущий период', data:{{ widgets_data.consumption_chart.current|safe }}, borderColor:'#2563eb', backgroundColor:'rgba(37,99,235,0.1)', fill:true, tension:0.3 },{ label:'Аналогичный период прошлого года', data:{{ widgets_data.consumption_chart.previous|safe }}, borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,0.1)', fill:true, tension:0.3 }] }, options:{ responsive:true, maintainAspectRatio:true } });
+        const pieCtx = document.getElementById('resourcePieCanvas')?.getContext('2d');
+        if(pieCtx) new Chart(pieCtx, { type:'pie', data:{ labels: {{ widgets_data.resource_pie.labels|safe }}, datasets:[{ data:{{ widgets_data.resource_pie.data|safe }}, backgroundColor:['#2563eb','#10b981','#f59e0b','#ef4444','#6b7280'] }] }, options:{ responsive:true } });
+        document.querySelectorAll('.export-chart').forEach(btn => btn.addEventListener('click', function(){ const canvas = document.getElementById(this.dataset.chartId); if(canvas){ const link = document.createElement('a'); link.download = this.dataset.filename||'chart.png'; link.href = canvas.toDataURL(); link.click(); } }));
+    });
+</script>
+{% endblock %}

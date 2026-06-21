@@ -1,0 +1,653 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Редактирование эксплуатационного паспорта: {{ building }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .nav-tabs .nav-link { font-weight: 500; cursor: pointer; }
+    .formset-row {
+        background-color: #f9f9f9;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        position: relative;
+    }
+    .formset-row .delete-row-btn {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        z-index: 10;
+    }
+    .progress-indicator {
+        font-size: 0.75rem;
+        margin-left: 0.5rem;
+        background: #e9ecef;
+        padding: 0.1rem 0.4rem;
+        border-radius: 1rem;
+    }
+    .required-star { color: #dc3545; margin-left: 2px; }
+    .errorlist {
+        color: #dc3545;
+        list-style: none;
+        padding-left: 0;
+        font-size: 0.8rem;
+        margin-top: 0.2rem;
+    }
+    .tab-content {
+        background-color: #fff;
+        border-radius: 0 0 0.5rem 0.5rem;
+        border: 1px solid #dee2e6;
+        border-top: none;
+        padding: 1.5rem;
+    }
+    .btn-add-row { margin-top: 0.5rem; }
+    [data-bs-toggle="tooltip"] { cursor: help; margin-left: 0.25rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1>✏️ Редактирование паспорта здания</h1>
+        <div>
+            <a href="{% url 'buildings:passport_detail' building.id %}" class="btn btn-outline-secondary">
+                <i class="bi bi-eye"></i> Вернуться к просмотру
+            </a>
+        </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" id="passportForm" novalidate>
+        {% csrf_token %}
+        {{ form.media }}
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+        {% endif %}
+        {% if form.errors %}
+            <div class="alert alert-danger">
+                <strong>Ошибка в основной форме:</strong>
+                <ul>{% for field, errors in form.errors.items %}<li>{{ field }}: {{ errors|join:", " }}</li>{% endfor %}</ul>
+            </div>
+        {% endif %}
+
+        <!-- Вкладки (ручное переключение) -->
+        <ul class="nav nav-tabs mb-3" id="passportTabs" role="tablist">
+            <li class="nav-item"><button class="nav-link active" id="general-tab">Общие сведения <span id="general-progress" class="progress-indicator"></span></button></li>
+            <li class="nav-item"><button class="nav-link" id="areas-tab">Площади и конструкция <span id="areas-progress" class="progress-indicator"></span></button></li>
+            <li class="nav-item"><button class="nav-link" id="rooms-tab">Помещения <span id="rooms-progress" class="progress-indicator"></span></button></li>
+            <li class="nav-item"><button class="nav-link" id="systems-tab">Инженерные системы <span id="systems-progress" class="progress-indicator"></span></button></li>
+            <li class="nav-item"><button class="nav-link" id="landscaping-tab">Благоустройство <span id="landscaping-progress" class="progress-indicator"></span></button></li>
+            <li class="nav-item"><button class="nav-link" id="inspections-tab">Проверки <span id="inspections-progress" class="progress-indicator"></span></button></li>
+            <li class="nav-item"><button class="nav-link" id="repairs-tab">Ремонты <span id="repairs-progress" class="progress-indicator"></span></button></li>
+            <li class="nav-item"><button class="nav-link" id="tenants-tab">Арендаторы <span id="tenants-progress" class="progress-indicator"></span></button></li>
+            <li class="nav-item"><button class="nav-link" id="appendixes-tab">Приложения <span id="appendixes-progress" class="progress-indicator"></span></button></li>
+            <li class="nav-item"><button class="nav-link" id="documents-tab">Документы <span id="documents-progress" class="progress-indicator"></span></button></li>
+            <li class="nav-item"><button class="nav-link" id="ownership-tab">Собственность <span id="ownership-progress" class="progress-indicator"></span></button></li>
+        </ul>
+
+        <div class="tab-content" id="passportTabContent">
+
+            <!-- 1. Общие сведения (без удалённых полей, без территории, без конструктивных) -->
+            <div class="tab-pane fade show active" id="general" role="tabpanel">
+                <div class="row g-3">
+                    {% for field in form %}
+                        {% if field.name not in 'wall_material,design_capacity,has_color_palette,foundation_type,residential_area,residential_livable_area,non_residential_area,total_area,territory_area,building_volume,underground_volume,foundation_desc,frame_desc,walls_desc,floors_desc,stairs_desc,roof_structure_desc,roof_cover_desc' %}
+                            <div class="col-md-6">
+                                <label for="{{ field.id_for_label }}" class="form-label">
+                                    {{ field.label }}{% if field.field.required %}<span class="required-star">*</span>{% endif %}
+                                    {% if field.help_text %}<i class="bi bi-question-circle" data-bs-toggle="tooltip" title="{{ field.help_text }}"></i>{% endif %}
+                                </label>
+                                {{ field }}
+                                {% if field.errors %}<div class="errorlist">{{ field.errors }}</div>{% endif %}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 2. Площади и конструкция (включая территорию, объёмы) -->
+            <div class="tab-pane fade" id="areas" role="tabpanel">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="id_total_area" class="form-label">Общая площадь здания (м²)</label>
+                        <input type="text" id="id_total_area" class="form-control" value="{{ building.total_area }}" readonly disabled>
+                    </div>
+                    <div class="col-md-6">
+                        {{ form.residential_area.label_tag }} {{ form.residential_area }}
+                        {% if form.residential_area.errors %}<div class="errorlist">{{ form.residential_area.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        {{ form.residential_livable_area.label_tag }} {{ form.residential_livable_area }}
+                        {% if form.residential_livable_area.errors %}<div class="errorlist">{{ form.residential_livable_area.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        {{ form.non_residential_area.label_tag }} {{ form.non_residential_area }}
+                        {% if form.non_residential_area.errors %}<div class="errorlist">{{ form.non_residential_area.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        {{ form.territory_area.label_tag }} {{ form.territory_area }}
+                        {% if form.territory_area.errors %}<div class="errorlist">{{ form.territory_area.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        {{ form.building_volume.label_tag }} {{ form.building_volume }}
+                        {% if form.building_volume.errors %}<div class="errorlist">{{ form.building_volume.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        {{ form.underground_volume.label_tag }} {{ form.underground_volume }}
+                        {% if form.underground_volume.errors %}<div class="errorlist">{{ form.underground_volume.errors }}</div>{% endif %}
+                    </div>
+                </div>
+                <hr class="my-4">
+                <h5 class="mt-3">Конструктивная характеристика</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">{{ form.foundation_desc.label_tag }} {{ form.foundation_desc }}</div>
+                    <div class="col-md-6">{{ form.frame_desc.label_tag }} {{ form.frame_desc }}</div>
+                    <div class="col-md-6">{{ form.walls_desc.label_tag }} {{ form.walls_desc }}</div>
+                    <div class="col-md-6">{{ form.floors_desc.label_tag }} {{ form.floors_desc }}</div>
+                    <div class="col-md-6">{{ form.stairs_desc.label_tag }} {{ form.stairs_desc }}</div>
+                    <div class="col-md-6">{{ form.roof_structure_desc.label_tag }} {{ form.roof_structure_desc }}</div>
+                    <div class="col-12">{{ form.roof_cover_desc.label_tag }} {{ form.roof_cover_desc }}</div>
+                </div>
+            </div>
+
+            <!-- 3. Внутренние помещения -->
+            <div class="tab-pane fade" id="rooms" role="tabpanel">
+                {{ room_formset.management_form }}
+                <div id="rooms-forms-container">
+                    {% for form in room_formset %}
+                        <div class="formset-row" id="room-{{ forloop.counter0 }}">
+                            {{ form.id }}
+                            <div class="row g-3">
+                                <div class="col-md-2">{{ form.section.label_tag }} {{ form.section }}</div>
+                                <div class="col-md-2">{{ form.floor.label_tag }} {{ form.floor }}</div>
+                                <div class="col-md-2">{{ form.name.label_tag }} {{ form.name }}</div>
+                                <div class="col-md-2">{{ form.ceiling_finish.label_tag }} {{ form.ceiling_finish }}</div>
+                                <div class="col-md-2">{{ form.walls_finish.label_tag }} {{ form.walls_finish }}</div>
+                                <div class="col-md-2">{{ form.floors_finish.label_tag }} {{ form.floors_finish }}</div>
+                                <div class="col-md-2">{{ form.windows.label_tag }} {{ form.windows }}</div>
+                                <div class="col-md-2">{{ form.doors.label_tag }} {{ form.doors }}</div>
+                                <div class="col-md-2">{{ form.last_repair_type.label_tag }} {{ form.last_repair_type }}</div>
+                                <div class="col-md-2">{{ form.last_repair_year.label_tag }} {{ form.last_repair_year }}</div>
+                                <div class="col-md-2">{{ form.condition.label_tag }} {{ form.condition }}</div>
+                                <div class="col-md-3">{{ form.recommendations.label_tag }} {{ form.recommendations }}</div>
+                                <div class="col-md-1 d-flex align-items-end">
+                                    <div class="form-check">{{ form.DELETE }} {{ form.DELETE.label_tag }}</div>
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-row-btn ms-2">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-secondary btn-add-row" id="add-room-btn">+ Добавить помещение</button>
+                <div id="room-empty-form" style="display: none;">{{ room_formset.empty_form.as_div }}</div>
+            </div>
+
+            <!-- 4. Инженерные системы -->
+            <div class="tab-pane fade" id="systems" role="tabpanel">
+                {{ system_formset.management_form }}
+                <div id="systems-forms-container">
+                    {% for form in system_formset %}
+                        <div class="formset-row" id="system-{{ forloop.counter0 }}">
+                            {{ form.id }}
+                            <div class="row g-3">
+                                <div class="col-md-3">{{ form.section.label_tag }} {{ form.section }}</div>
+                                <div class="col-md-3">{{ form.system_type.label_tag }} {{ form.system_type }}</div>
+                                <div class="col-md-3">{{ form.type_desc.label_tag }} {{ form.type_desc }}</div>
+                                <div class="col-md-3">{{ form.power.label_tag }} {{ form.power }}</div>
+                                <div class="col-md-3">{{ form.inlet_diameter.label_tag }} {{ form.inlet_diameter }}</div>
+                                <div class="col-md-3">{{ form.district_number.label_tag }} {{ form.district_number }}</div>
+                                <div class="col-md-3">{{ form.district_phone.label_tag }} {{ form.district_phone }}</div>
+                                <div class="col-md-3">{{ form.subscriber_number.label_tag }} {{ form.subscriber_number }}</div>
+                                <div class="col-md-4">{{ form.meter1_type.label_tag }} {{ form.meter1_type }}</div>
+                                <div class="col-md-4">{{ form.meter1_number.label_tag }} {{ form.meter1_number }}</div>
+                                <div class="col-md-4">{{ form.meter1_verification_date.label_tag }} {{ form.meter1_verification_date }}</div>
+                                <div class="col-md-4">{{ form.meter2_type.label_tag }} {{ form.meter2_type }}</div>
+                                <div class="col-md-4">{{ form.meter2_number.label_tag }} {{ form.meter2_number }}</div>
+                                <div class="col-md-4">{{ form.meter2_verification_date.label_tag }} {{ form.meter2_verification_date }}</div>
+                                <div class="col-md-4">{{ form.meter3_type.label_tag }} {{ form.meter3_type }}</div>
+                                <div class="col-md-4">{{ form.meter3_number.label_tag }} {{ form.meter3_number }}</div>
+                                <div class="col-md-4">{{ form.meter3_verification_date.label_tag }} {{ form.meter3_verification_date }}</div>
+                                <div class="col-12">{{ form.network_description.label_tag }} {{ form.network_description }}</div>
+                                <div class="col-md-4">{{ form.last_repair_type.label_tag }} {{ form.last_repair_type }}</div>
+                                <div class="col-md-4">{{ form.last_repair_year.label_tag }} {{ form.last_repair_year }}</div>
+                                <div class="col-md-4">{{ form.installed_power.label_tag }} {{ form.installed_power }}</div>
+                                <div class="col-md-4">{{ form.permitted_power.label_tag }} {{ form.permitted_power }}</div>
+                                <div class="col-md-1 d-flex align-items-end">
+                                    <div class="form-check">{{ form.DELETE }} {{ form.DELETE.label_tag }}</div>
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-row-btn ms-2">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-secondary btn-add-row" id="add-system-btn">+ Добавить систему</button>
+                <div id="system-empty-form" style="display: none;">{{ system_formset.empty_form.as_div }}</div>
+            </div>
+
+            <!-- 5. Благоустройство -->
+            <div class="tab-pane fade" id="landscaping" role="tabpanel">
+                {{ landscaping_formset.management_form }}
+                <div id="landscaping-forms-container">
+                    {% for form in landscaping_formset %}
+                        <div class="formset-row" id="landscaping-{{ forloop.counter0 }}">
+                            {{ form.id }}
+                            <div class="row g-3">
+                                <div class="col-md-3">{{ form.section.label_tag }} {{ form.section }}</div>
+                                <div class="col-md-3">{{ form.element.label_tag }} {{ form.element }}</div>
+                                <div class="col-md-3">{{ form.quantity.label_tag }} {{ form.quantity }}</div>
+                                <div class="col-md-3">{{ form.characteristic.label_tag }} {{ form.characteristic }}</div>
+                                <div class="col-md-2">{{ form.has_documents }} {{ form.has_documents.label_tag }}</div>
+                                <div class="col-md-3">{{ form.condition.label_tag }} {{ form.condition }}</div>
+                                <div class="col-md-4">{{ form.recommendations.label_tag }} {{ form.recommendations }}</div>
+                                <div class="col-md-1 d-flex align-items-end">
+                                    <div class="form-check">{{ form.DELETE }} {{ form.DELETE.label_tag }}</div>
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-row-btn ms-2">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-secondary btn-add-row" id="add-landscaping-btn">+ Добавить элемент благоустройства</button>
+                <div id="landscaping-empty-form" style="display: none;">{{ landscaping_formset.empty_form.as_div }}</div>
+            </div>
+
+            <!-- 6. Проверки -->
+            <div class="tab-pane fade" id="inspections" role="tabpanel">
+                {{ inspection_formset.management_form }}
+                <div id="inspections-forms-container">
+                    {% for form in inspection_formset %}
+                        <div class="formset-row" id="inspection-{{ forloop.counter0 }}">
+                            {{ form.id }}
+                            <div class="row g-3">
+                                <div class="col-md-2">{{ form.section.label_tag }} {{ form.section }}</div>
+                                <div class="col-md-2">{{ form.inspection_date.label_tag }} {{ form.inspection_date }}</div>
+                                <div class="col-md-2">{{ form.reason.label_tag }} {{ form.reason }}</div>
+                                <div class="col-md-3">{{ form.inspector.label_tag }} {{ form.inspector }}</div>
+                                <div class="col-12">{{ form.findings.label_tag }} {{ form.findings }}</div>
+                                <div class="col-12">{{ form.conclusion.label_tag }} {{ form.conclusion }}</div>
+                                <div class="col-12">{{ form.recommendations.label_tag }} {{ form.recommendations }}</div>
+                                <div class="col-md-1 d-flex align-items-end">
+                                    <div class="form-check">{{ form.DELETE }} {{ form.DELETE.label_tag }}</div>
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-row-btn ms-2">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-secondary btn-add-row" id="add-inspection-btn">+ Добавить проверку</button>
+                <div id="inspection-empty-form" style="display: none;">{{ inspection_formset.empty_form.as_div }}</div>
+            </div>
+
+            <!-- 7. Ремонты -->
+            <div class="tab-pane fade" id="repairs" role="tabpanel">
+                {{ repair_formset.management_form }}
+                <div id="repairs-forms-container">
+                    {% for form in repair_formset %}
+                        <div class="formset-row" id="repair-{{ forloop.counter0 }}">
+                            {{ form.id }}
+                            <div class="row g-3">
+                                <div class="col-md-2">{{ form.section.label_tag }} {{ form.section }}</div>
+                                <div class="col-md-3">{{ form.object_name.label_tag }} {{ form.object_name }}</div>
+                                <div class="col-md-3">{{ form.repair_type.label_tag }} {{ form.repair_type }}</div>
+                                <div class="col-md-2">{{ form.start_date.label_tag }} {{ form.start_date }}</div>
+                                <div class="col-md-2">{{ form.end_date.label_tag }} {{ form.end_date }}</div>
+                                <div class="col-md-2">{{ form.contract_number.label_tag }} {{ form.contract_number }}</div>
+                                <div class="col-md-2">{{ form.contract_amount.label_tag }} {{ form.contract_amount }}</div>
+                                <div class="col-md-3">{{ form.contractor.label_tag }} {{ form.contractor }}</div>
+                                <div class="col-md-3">{{ form.warranty_period.label_tag }} {{ form.warranty_period }}</div>
+                                <div class="col-12">{{ form.note.label_tag }} {{ form.note }}</div>
+                                <div class="col-md-1 d-flex align-items-end">
+                                    <div class="form-check">{{ form.DELETE }} {{ form.DELETE.label_tag }}</div>
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-row-btn ms-2">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-secondary btn-add-row" id="add-repair-btn">+ Добавить ремонт</button>
+                <div id="repair-empty-form" style="display: none;">{{ repair_formset.empty_form.as_div }}</div>
+            </div>
+
+            <!-- 8. Арендаторы -->
+            <div class="tab-pane fade" id="tenants" role="tabpanel">
+                {{ tenant_formset.management_form }}
+                <div id="tenants-forms-container">
+                    {% for form in tenant_formset %}
+                        <div class="formset-row" id="tenant-{{ forloop.counter0 }}">
+                            {{ form.id }}
+                            <div class="row g-3">
+                                <div class="col-md-3">{{ form.section.label_tag }} {{ form.section }}</div>
+                                <div class="col-md-3">{{ form.name.label_tag }} {{ form.name }}</div>
+                                <div class="col-md-3">{{ form.activity.label_tag }} {{ form.activity }}</div>
+                                <div class="col-md-3">{{ form.rented_areas.label_tag }} {{ form.rented_areas }}</div>
+                                <div class="col-md-3">{{ form.lease_term.label_tag }} {{ form.lease_term }}</div>
+                                <div class="col-md-3">{{ form.contract_number.label_tag }} {{ form.contract_number }}</div>
+                                <div class="col-md-1 d-flex align-items-end">
+                                    <div class="form-check">{{ form.DELETE }} {{ form.DELETE.label_tag }}</div>
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-row-btn ms-2">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-secondary btn-add-row" id="add-tenant-btn">+ Добавить арендатора</button>
+                <div id="tenant-empty-form" style="display: none;">{{ tenant_formset.empty_form.as_div }}</div>
+            </div>
+
+            <!-- 9. Приложения -->
+            <div class="tab-pane fade" id="appendixes" role="tabpanel">
+                {{ appendix_formset.management_form }}
+                <div id="appendixes-forms-container">
+                    {% for form in appendix_formset %}
+                        <div class="formset-row" id="appendix-{{ forloop.counter0 }}">
+                            {{ form.id }}
+                            <div class="row g-3">
+                                <div class="col-md-3">{{ form.section.label_tag }} {{ form.section }}</div>
+                                <div class="col-md-3">{{ form.appendix_type.label_tag }} {{ form.appendix_type }}</div>
+                                <div class="col-md-3">{{ form.title.label_tag }} {{ form.title }}</div>
+                                <div class="col-md-3">{{ form.file.label_tag }} {{ form.file }}</div>
+                                <div class="col-md-1 d-flex align-items-end">
+                                    <div class="form-check">{{ form.DELETE }} {{ form.DELETE.label_tag }}</div>
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-row-btn ms-2">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-secondary btn-add-row" id="add-appendix-btn">+ Добавить приложение</button>
+                <div id="appendix-empty-form" style="display: none;">{{ appendix_formset.empty_form.as_div }}</div>
+            </div>
+
+            <!-- 10. Документы -->
+            <div class="tab-pane fade" id="documents" role="tabpanel">
+                {{ document_formset.management_form }}
+                <div id="documents-forms-container">
+                    {% for form in document_formset %}
+                        <div class="formset-row" id="document-{{ forloop.counter0 }}">
+                            {{ form.id }}
+                            <div class="row g-3">
+                                <div class="col-md-3">{{ form.section.label_tag }} {{ form.section }}</div>
+                                <div class="col-md-4">{{ form.title.label_tag }} {{ form.title }}</div>
+                                <div class="col-md-4">{{ form.file.label_tag }} {{ form.file }}</div>
+                                <div class="col-md-1 d-flex align-items-end">
+                                    <div class="form-check">{{ form.DELETE }} {{ form.DELETE.label_tag }}</div>
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-row-btn ms-2">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-secondary btn-add-row" id="add-document-btn">+ Добавить документ</button>
+                <div id="document-empty-form" style="display: none;">{{ document_formset.empty_form.as_div }}</div>
+            </div>
+
+            <!-- 11. Документы о собственности -->
+            <div class="tab-pane fade" id="ownership" role="tabpanel">
+                {{ ownership_formset.management_form }}
+                <div id="ownership-forms-container">
+                    {% for form in ownership_formset %}
+                        <div class="formset-row" id="ownership-{{ forloop.counter0 }}">
+                            {{ form.id }}
+                            <div class="row g-3">
+                                <div class="col-md-5">{{ form.title.label_tag }} {{ form.title }}</div>
+                                <div class="col-md-6">{{ form.file.label_tag }} {{ form.file }}</div>
+                                <div class="col-md-1 d-flex align-items-end">
+                                    <div class="form-check">{{ form.DELETE }} {{ form.DELETE.label_tag }}</div>
+                                    <button type="button" class="btn btn-sm btn-outline-danger delete-row-btn ms-2">🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-secondary btn-add-row" id="add-ownership-btn">+ Добавить документ о собственности</button>
+                <div id="ownership-empty-form" style="display: none;">{{ ownership_formset.empty_form.as_div }}</div>
+            </div>
+        </div>
+
+        <div class="mt-4 d-flex justify-content-between">
+            <a href="{% url 'buildings:passport_detail' building.id %}" class="btn btn-outline-danger">Отмена</a>
+            <button type="submit" class="btn btn-primary px-5">Сохранить все изменения</button>
+        </div>
+    </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    flatpickr(".datepicker", { dateFormat: "d.m.Y", locale: "ru", allowInput: true });
+
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (el) { return new bootstrap.Tooltip(el); });
+
+    // Ручное переключение вкладок (без отправки формы)
+    const tabs = document.querySelectorAll('#passportTabs .nav-link');
+    const panes = document.querySelectorAll('.tab-pane');
+
+    function activateTab(tabId) {
+        tabs.forEach(tab => tab.classList.remove('active'));
+        panes.forEach(pane => pane.classList.remove('show', 'active'));
+
+        const selectedTab = document.getElementById(tabId);
+        if (selectedTab) selectedTab.classList.add('active');
+
+        const targetId = tabId.replace('-tab', '');
+        const targetPane = document.getElementById(targetId);
+        if (targetPane) targetPane.classList.add('show', 'active');
+    }
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function(e) {
+            e.preventDefault();
+            activateTab(this.id);
+        });
+    });
+
+    // Удаление строк формсета
+    function bindDeleteHandlers() {
+        document.querySelectorAll('.formset-row .form-check-input[name$="-DELETE"]').forEach(checkbox => {
+            const row = checkbox.closest('.formset-row');
+            const deleteBtn = row.querySelector('.delete-row-btn');
+            if (deleteBtn) {
+                deleteBtn.style.display = checkbox.checked ? 'none' : 'inline-block';
+                deleteBtn.onclick = () => {
+                    checkbox.checked = true;
+                    row.style.display = 'none';
+                };
+            }
+        });
+    }
+    bindDeleteHandlers();
+
+    // Динамическое добавление строк формсета
+    function addFormsetRow(containerId, totalFormsFieldId, emptyFormHtml) {
+        const container = document.getElementById(containerId);
+        const totalFormsInput = document.getElementById(totalFormsFieldId);
+        const formCount = parseInt(totalFormsInput.value);
+        const newFormHtml = emptyFormHtml.replace(/__prefix__/g, formCount);
+        container.insertAdjacentHTML('beforeend', newFormHtml);
+        totalFormsInput.value = formCount + 1;
+        flatpickr(".datepicker", { dateFormat: "d.m.Y", locale: "ru", allowInput: true });
+        bindDeleteHandlers();
+        calculateProgress();
+    }
+
+    // Инициализация кнопок добавления для формсетов
+    const roomEmpty = document.getElementById('room-empty-form')?.innerHTML;
+    if (roomEmpty) document.getElementById('add-room-btn')?.addEventListener('click', () => addFormsetRow('rooms-forms-container', 'id_room_set-TOTAL_FORMS', roomEmpty));
+    const systemEmpty = document.getElementById('system-empty-form')?.innerHTML;
+    if (systemEmpty) document.getElementById('add-system-btn')?.addEventListener('click', () => addFormsetRow('systems-forms-container', 'id_system_set-TOTAL_FORMS', systemEmpty));
+    const landscapingEmpty = document.getElementById('landscaping-empty-form')?.innerHTML;
+    if (landscapingEmpty) document.getElementById('add-landscaping-btn')?.addEventListener('click', () => addFormsetRow('landscaping-forms-container', 'id_landscaping_set-TOTAL_FORMS', landscapingEmpty));
+    const inspectionEmpty = document.getElementById('inspection-empty-form')?.innerHTML;
+    if (inspectionEmpty) document.getElementById('add-inspection-btn')?.addEventListener('click', () => addFormsetRow('inspections-forms-container', 'id_inspection_set-TOTAL_FORMS', inspectionEmpty));
+    const repairEmpty = document.getElementById('repair-empty-form')?.innerHTML;
+    if (repairEmpty) document.getElementById('add-repair-btn')?.addEventListener('click', () => addFormsetRow('repairs-forms-container', 'id_repair_set-TOTAL_FORMS', repairEmpty));
+    const tenantEmpty = document.getElementById('tenant-empty-form')?.innerHTML;
+    if (tenantEmpty) document.getElementById('add-tenant-btn')?.addEventListener('click', () => addFormsetRow('tenants-forms-container', 'id_tenant_set-TOTAL_FORMS', tenantEmpty));
+    const appendixEmpty = document.getElementById('appendix-empty-form')?.innerHTML;
+    if (appendixEmpty) document.getElementById('add-appendix-btn')?.addEventListener('click', () => addFormsetRow('appendixes-forms-container', 'id_appendix_set-TOTAL_FORMS', appendixEmpty));
+    const documentEmpty = document.getElementById('document-empty-form')?.innerHTML;
+    if (documentEmpty) document.getElementById('add-document-btn')?.addEventListener('click', () => addFormsetRow('documents-forms-container', 'id_document_set-TOTAL_FORMS', documentEmpty));
+    const ownershipEmpty = document.getElementById('ownership-empty-form')?.innerHTML;
+    if (ownershipEmpty) document.getElementById('add-ownership-btn')?.addEventListener('click', () => addFormsetRow('ownership-forms-container', 'id_ownership_set-TOTAL_FORMS', ownershipEmpty));
+
+    // Подсчёт прогресса заполнения
+    function calculateProgress() {
+        // Общие сведения (без удалённых полей)
+        const generalFields = [
+            'id_name', 'id_cadastral_number', 'id_address', 'id_year_built', 'id_number_of_floors',
+            'id_building_type', 'id_number_of_rooms', 'id_balance_cost', 'id_project_type',
+            'id_underground_floors', 'id_is_cultural_heritage', 'id_emergency_info',
+            'id_major_repair_decision', 'id_demolition_decision',
+            'id_director_name', 'id_director_phone', 'id_institution_name'
+        ];
+        let generalFilled = 0;
+        generalFields.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.value && el.value.trim() !== '') generalFilled++;
+        });
+        // Чекбокс is_cultural_heritage – учитываем отдельно (значение checked)
+        const heritageCheckbox = document.getElementById('id_is_cultural_heritage');
+        if (heritageCheckbox && heritageCheckbox.checked) generalFilled++;
+        updateProgressIndicator('general-progress', generalFilled, generalFields.length + 1);
+
+        // Площади и конструкция (включая территорию и объёмы)
+        let areasFilled = 0;
+        const resArea = document.getElementById('id_residential_area')?.value.trim();
+        const resLivable = document.getElementById('id_residential_livable_area')?.value.trim();
+        const nonRes = document.getElementById('id_non_residential_area')?.value.trim();
+        const territory = document.getElementById('id_territory_area')?.value.trim();
+        const buildingVol = document.getElementById('id_building_volume')?.value.trim();
+        const undergroundVol = document.getElementById('id_underground_volume')?.value.trim();
+        if (resArea && resArea !== '0') areasFilled++;
+        if (resLivable && resLivable !== '0') areasFilled++;
+        if (nonRes && nonRes !== '0') areasFilled++;
+        if (territory && territory !== '0') areasFilled++;
+        if (buildingVol && buildingVol !== '0') areasFilled++;
+        if (undergroundVol && undergroundVol !== '0') areasFilled++;
+
+        const constructFields = ['foundation_desc', 'frame_desc', 'walls_desc', 'floors_desc', 'stairs_desc', 'roof_structure_desc', 'roof_cover_desc'];
+        constructFields.forEach(field => {
+            const el = document.getElementById(`id_${field}`);
+            if (el && el.value && el.value.trim() !== '') areasFilled++;
+        });
+        updateProgressIndicator('areas-progress', areasFilled, 6 + constructFields.length);
+
+        // Помещения
+        const roomRows = document.querySelectorAll('#rooms-forms-container .formset-row:not([style*="display: none"])');
+        let roomFilled = 0;
+        roomRows.forEach(row => {
+            const section = row.querySelector('select[name$="-section"]')?.value;
+            const floor = row.querySelector('select[name$="-floor"]')?.value;
+            const name = row.querySelector('input[name$="-name"]')?.value.trim();
+            if (section && floor && name) roomFilled++;
+        });
+        updateProgressIndicator('rooms-progress', roomFilled, roomRows.length);
+
+        // Инженерные системы
+        const sysRows = document.querySelectorAll('#systems-forms-container .formset-row:not([style*="display: none"])');
+        let sysFilled = 0;
+        sysRows.forEach(row => {
+            const section = row.querySelector('select[name$="-section"]')?.value;
+            const sysType = row.querySelector('select[name$="-system_type"]')?.value;
+            const typeDesc = row.querySelector('input[name$="-type_desc"]')?.value.trim();
+            if (section && sysType && typeDesc) sysFilled++;
+        });
+        updateProgressIndicator('systems-progress', sysFilled, sysRows.length);
+
+        // Благоустройство
+        const landRows = document.querySelectorAll('#landscaping-forms-container .formset-row:not([style*="display: none"])');
+        let landFilled = 0;
+        landRows.forEach(row => {
+            const section = row.querySelector('select[name$="-section"]')?.value;
+            const element = row.querySelector('input[name$="-element"]')?.value.trim();
+            if (section && element) landFilled++;
+        });
+        updateProgressIndicator('landscaping-progress', landFilled, landRows.length);
+
+        // Проверки
+        const inspRows = document.querySelectorAll('#inspections-forms-container .formset-row:not([style*="display: none"])');
+        let inspFilled = 0;
+        inspRows.forEach(row => {
+            const section = row.querySelector('select[name$="-section"]')?.value;
+            const date = row.querySelector('input[name$="-inspection_date"]')?.value.trim();
+            const inspector = row.querySelector('input[name$="-inspector"]')?.value.trim();
+            if (section && date && inspector) inspFilled++;
+        });
+        updateProgressIndicator('inspections-progress', inspFilled, inspRows.length);
+
+        // Ремонты
+        const repRows = document.querySelectorAll('#repairs-forms-container .formset-row:not([style*="display: none"])');
+        let repFilled = 0;
+        repRows.forEach(row => {
+            const section = row.querySelector('select[name$="-section"]')?.value;
+            const object = row.querySelector('input[name$="-object_name"]')?.value.trim();
+            const type = row.querySelector('input[name$="-repair_type"]')?.value.trim();
+            if (section && object && type) repFilled++;
+        });
+        updateProgressIndicator('repairs-progress', repFilled, repRows.length);
+
+        // Арендаторы
+        const tenRows = document.querySelectorAll('#tenants-forms-container .formset-row:not([style*="display: none"])');
+        let tenFilled = 0;
+        tenRows.forEach(row => {
+            const section = row.querySelector('select[name$="-section"]')?.value;
+            const name = row.querySelector('input[name$="-name"]')?.value.trim();
+            if (section && name) tenFilled++;
+        });
+        updateProgressIndicator('tenants-progress', tenFilled, tenRows.length);
+
+        // Приложения
+        const appRows = document.querySelectorAll('#appendixes-forms-container .formset-row:not([style*="display: none"])');
+        let appFilled = 0;
+        appRows.forEach(row => {
+            const section = row.querySelector('select[name$="-section"]')?.value;
+            const type = row.querySelector('select[name$="-appendix_type"]')?.value;
+            const file = row.querySelector('input[name$="-file"]')?.value;
+            if (section && (type || file)) appFilled++;
+        });
+        updateProgressIndicator('appendixes-progress', appFilled, appRows.length);
+
+        // Документы
+        const docRows = document.querySelectorAll('#documents-forms-container .formset-row:not([style*="display: none"])');
+        let docFilled = 0;
+        docRows.forEach(row => {
+            const section = row.querySelector('select[name$="-section"]')?.value;
+            const file = row.querySelector('input[name$="-file"]')?.value;
+            if (section && file) docFilled++;
+        });
+        updateProgressIndicator('documents-progress', docFilled, docRows.length);
+
+        // Документы о собственности
+        const ownRows = document.querySelectorAll('#ownership-forms-container .formset-row:not([style*="display: none"])');
+        let ownFilled = 0;
+        ownRows.forEach(row => {
+            const file = row.querySelector('input[name$="-file"]')?.value;
+            if (file) ownFilled++;
+        });
+        updateProgressIndicator('ownership-progress', ownFilled, ownRows.length);
+    }
+
+    function updateProgressIndicator(elId, filled, total) {
+        const span = document.getElementById(elId);
+        if (span && total > 0) {
+            const percent = Math.round((filled / total) * 100);
+            span.textContent = `${percent}%`;
+            span.style.backgroundColor = percent === 100 ? '#d1e7dd' : (percent > 50 ? '#fff3cd' : '#f8d7da');
+            span.style.color = percent === 100 ? '#0f5132' : (percent > 50 ? '#664d03' : '#842029');
+        } else if (span) {
+            span.textContent = '0%';
+        }
+    }
+
+    document.querySelectorAll('input, select, textarea').forEach(el => {
+        el.addEventListener('change', calculateProgress);
+        el.addEventListener('input', calculateProgress);
+    });
+    calculateProgress();
+});
+</script>
+{% endblock %}

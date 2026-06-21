@@ -1,0 +1,552 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Эксплуатационный паспорт: {{ building }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .section-card {
+        margin-bottom: 2rem;
+        break-inside: avoid;
+        transition: box-shadow 0.2s;
+    }
+    .section-card:hover {
+        box-shadow: 0 0.25rem 0.5rem rgba(0,0,0,0.05);
+    }
+    .section-title {
+        background-color: #e9ecef;
+        padding: 0.5rem 1rem;
+        border-radius: 0.375rem;
+        margin-bottom: 1rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .subsection-title {
+        background-color: #f8f9fa;
+        padding: 0.3rem 0.75rem;
+        border-left: 4px solid #0d6efd;
+        margin-top: 1rem;
+        margin-bottom: 0.75rem;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    table {
+        width: 100%;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+    th, td {
+        padding: 0.5rem;
+        vertical-align: top;
+    }
+    .table-bordered th, .table-bordered td {
+        border: 1px solid #dee2e6;
+    }
+    .table-striped tbody tr:nth-of-type(odd) {
+        background-color: rgba(0,0,0,0.02);
+    }
+    .nav-tabs .nav-link {
+        font-weight: 500;
+        color: #4a5568;
+    }
+    .nav-tabs .nav-link.active {
+        color: #0d6efd;
+        font-weight: 600;
+        border-bottom-color: #0d6efd;
+    }
+    .file-list {
+        list-style: none;
+        padding-left: 0;
+    }
+    .file-list li {
+        padding: 0.3rem 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .file-list li:last-child {
+        border-bottom: none;
+    }
+    .empty-message {
+        background-color: #f8f9fa;
+        border: 1px dashed #dee2e6;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        text-align: center;
+        color: #6c757d;
+    }
+    @media print {
+        .btn, .navbar, footer, .no-print, .nav-tabs {
+            display: none !important;
+        }
+        body {
+            padding-top: 0 !important;
+        }
+        .container {
+            max-width: 100%;
+        }
+        .tab-pane {
+            display: block !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+        .section-card {
+            break-inside: avoid;
+            box-shadow: none;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1><i class="bi bi-building"></i> Эксплуатационный паспорт здания</h1>
+        <div class="no-print">
+            <a href="{% url 'buildings:passport_edit' building.id %}" class="btn btn-warning {% if not can_edit %}disabled{% endif %}">
+                <i class="bi bi-pencil"></i> Редактировать
+            </a>
+            <a href="{% url 'buildings:passport_export' building.id %}" class="btn btn-success">
+                <i class="bi bi-file-excel"></i> Экспорт в Excel
+            </a>
+            <button onclick="window.print()" class="btn btn-secondary">
+                <i class="bi bi-printer"></i> Печать
+            </button>
+            <a href="{% url 'buildings:building_list' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> К списку
+            </a>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs mb-3" id="passportDetailTabs" role="tablist">
+        <li class="nav-item"><button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general"><i class="bi bi-info-circle"></i> Общие сведения</button></li>
+        <li class="nav-item"><button class="nav-link" id="areas-tab" data-bs-toggle="tab" data-bs-target="#areas"><i class="bi bi-grid-3x3-gap-fill"></i> Площади и конструкция</button></li>
+        <li class="nav-item"><button class="nav-link" id="rooms-tab" data-bs-toggle="tab" data-bs-target="#rooms"><i class="bi bi-door-open"></i> Внутренние помещения</button></li>
+        <li class="nav-item"><button class="nav-link" id="systems-tab" data-bs-toggle="tab" data-bs-target="#systems"><i class="bi bi-gear"></i> Инженерные системы</button></li>
+        <li class="nav-item"><button class="nav-link" id="landscaping-tab" data-bs-toggle="tab" data-bs-target="#landscaping"><i class="bi bi-tree"></i> Благоустройство</button></li>
+        <li class="nav-item"><button class="nav-link" id="repairs-tab" data-bs-toggle="tab" data-bs-target="#repairs"><i class="bi bi-hammer"></i> Ремонты</button></li>
+        <li class="nav-item"><button class="nav-link" id="tenants-tab" data-bs-toggle="tab" data-bs-target="#tenants"><i class="bi bi-people"></i> Арендаторы</button></li>
+        <li class="nav-item"><button class="nav-link" id="appendixes-tab" data-bs-toggle="tab" data-bs-target="#appendixes"><i class="bi bi-paperclip"></i> Приложения и документы</button></li>
+        <li class="nav-item"><button class="nav-link" id="inspections-tab" data-bs-toggle="tab" data-bs-target="#inspections"><i class="bi bi-clipboard-check"></i> Проверки</button></li>
+        <li class="nav-item"><button class="nav-link" id="ownership-tab" data-bs-toggle="tab" data-bs-target="#ownership"><i class="bi bi-file-earmark-text"></i> Собственность</button></li>
+    </ul>
+
+    <div class="tab-content" id="passportDetailTabContent">
+
+        <!-- 1. Общие сведения -->
+<div class="tab-pane fade show active" id="general" role="tabpanel">
+    <div class="section-card">
+        <div class="section-title"><i class="bi bi-house-door"></i> Общие сведения</div>
+        <div class="row">
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless">
+                    <tr>
+                        <th style="width: 45%;">Наименование учреждения:</th>
+                        <td>{{ building.institution_name|default:"—" }}</th>
+                    </tr>
+                    <tr>
+                        <th>Адрес:</th>
+                        <td>{{ building.address }}</th>
+                    </tr>
+                    <tr>
+                        <th>Кадастровый номер:</th>
+                        <td>{{ building.cadastral_number }}</th>
+                    </tr>
+                    <tr>
+                        <th>ФИО руководителя:</th>
+                        <td>{{ building.director_name|default:"—" }}</th>
+                    </tr>
+                    <tr>
+                        <th>Телефон:</th>
+                        <td>{{ building.director_phone|default:"—" }}</th>
+                    </tr>
+                    <tr>
+                        <th>Год постройки:</th>
+                        <td>{{ building.year_built }}</th>
+                    </tr>
+                    <tr>
+                        <th>Этажность:</th>
+                        <td>{{ building.number_of_floors }}</th>
+                    </tr>
+                    <tr>
+                        <th>Подземные этажи:</th>
+                        <td>{{ building.underground_floors|default:"0" }}</th>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless">
+                    <tr>
+                        <th style="width: 45%;">Тип здания:</th>
+                        <td>{{ building.get_building_type_display }}</th>
+                    </tr>
+                    <tr>
+                        <th>Количество помещений:</th>
+                        <td>{{ building.number_of_rooms }}</th>
+                    </tr>
+                    <tr>
+                        <th>Балансовая стоимость:</th>
+                        <td>{{ building.balance_cost|default:"—" }} млн руб.</th>
+                    </tr>
+                    <tr>
+                        <th>Тип проекта:</th>
+                        <td>{{ building.project_type|default:"—" }}</th>
+                    </tr>
+                    <tr>
+                        <th>Объект культурного наследия:</th>
+                        <td>{{ building.is_cultural_heritage|yesno:"Да,Нет" }}</th>
+                    </tr>
+                    <tr>
+                        <th>Сведения об аварийности:</th>
+                        <td>{{ building.emergency_info|default:"—"|linebreaksbr }}</th>
+                    </tr>
+                    <tr>
+                        <th>Решение о капитальном ремонте:</th>
+                        <td>{{ building.major_repair_decision|default:"—"|linebreaksbr }}</th>
+                    </tr>
+                    <tr>
+                        <th>Решение о сносе:</th>
+                        <td>{{ building.demolition_decision|default:"—"|linebreaksbr }}</th>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+        <!-- 2. Площади и конструкция -->
+<div class="tab-pane fade" id="areas" role="tabpanel">
+    <div class="section-card">
+        <div class="section-title"><i class="bi bi-grid-3x3-gap-fill"></i> Площади и объемы</div>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-striped">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 40%">Тип помещения / Характеристика</th>
+                        <th style="width: 30%">Общая площадь (м²)</th>
+                        <th style="width: 30%">Жилая площадь (м²)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><strong>Общая площадь здания</strong></td><td>{{ building.total_area|default:"—" }}</td><td>—</td></tr>
+                    <tr><td><strong>Жилые помещения</strong></td><td>{{ building.residential_area|default:"—" }}</td><td>{{ building.residential_livable_area|default:"—" }}</td></tr>
+                    <tr><td><strong>Нежилые помещения</strong></td><td>{{ building.non_residential_area|default:"—" }}</td><td>—</td></tr>
+                    <tr><td><strong>Площадь территории</strong></td><td>{{ building.territory_area|default:"—" }}</td><td>—</td></tr>
+                    <tr><td><strong>Объем здания (м³)</strong></td><td>{{ building.building_volume|default:"—" }}</td><td>—</td></tr>
+                    <tr><td><strong>Объем подземной части (м³)</strong></td><td>{{ building.underground_volume|default:"—" }}</td><td>—</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="section-card">
+        <div class="section-title"><i class="bi bi-bricks"></i> Конструктивная характеристика</div>
+        <div class="row">
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless">
+                    <tr><th style="width: 45%;">Фундаменты:</th><td>{{ building.foundation_desc|default:"—"|linebreaksbr }}</th></tr>
+                    <tr><th>Несущий каркас:</th><td>{{ building.frame_desc|default:"—"|linebreaksbr }}</th></tr>
+                    <tr><th>Стены и перегородки:</th><td>{{ building.walls_desc|default:"—"|linebreaksbr }}</th></tr>
+                    <tr><th>Перекрытия:</th><td>{{ building.floors_desc|default:"—"|linebreaksbr }}</th></td>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless">
+                    <tr><th>Лестницы:</th><td>{{ building.stairs_desc|default:"—"|linebreaksbr }}</th></tr>
+                    <tr><th style="width: 45%;">Несущие элементы кровли:</th><td>{{ building.roof_structure_desc|default:"—"|linebreaksbr }}</th></tr>
+                    <tr><th>Кровля:</th><td>{{ building.roof_cover_desc|default:"—"|linebreaksbr }}</th></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+        <!-- 3. Внутренние помещения (только помещения, без конструкций) -->
+        <div class="tab-pane fade" id="rooms" role="tabpanel">
+            <div class="section-card">
+                <div class="section-title"><i class="bi bi-door-open"></i> Внутренние помещения</div>
+                {% if building.sections.exists %}
+                    {% for section in building.sections.all %}
+                        <div class="subsection-title">{{ section.name }}</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered table-striped">
+                                <thead class="table-light">
+                                    <tr><th>Этаж</th><th>Наименование</th><th>Потолок</th><th>Стены</th><th>Полы</th><th>Окна</th><th>Двери</th><th>Состояние</th><th>Рекомендации</th></tr>
+                                </thead>
+                                <tbody>
+                                    {% for room in building.rooms.all|dictsort:"name" %}
+                                        {% if room.section == section %}
+                                        <tr>
+                                            <td>{{ room.get_floor_display }}</th>
+                                            <td>{{ room.name }}</th>
+                                            <td>{{ room.ceiling_finish|default:"—" }}</th>
+                                            <td>{{ room.walls_finish|default:"—" }}</th>
+                                            <td>{{ room.floors_finish|default:"—" }}</th>
+                                            <td>{{ room.windows|default:"—" }}</th>
+                                            <td>{{ room.doors|default:"—" }}</th>
+                                            <td>{{ room.condition|default:"—" }}</th>
+                                            <td>{{ room.recommendations|default:"—" }}</th>
+                                        </tr>
+                                        {% endif %}
+                                    {% empty %}
+                                        <tr><td colspan="9" class="text-muted text-center">Нет помещений в этой секции</th></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-striped">
+                            <thead class="table-light">
+                                <tr><th>Этаж</th><th>Наименование</th><th>Потолок</th><th>Стены</th><th>Полы</th><th>Окна</th><th>Двери</th><th>Состояние</th><th>Рекомендации</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for room in building.rooms.all|dictsort:"name" %}
+                                <tr>
+                                    <td>{{ room.get_floor_display }}</th>
+                                    <td>{{ room.name }}</th>
+                                    <td>{{ room.ceiling_finish|default:"—" }}</th>
+                                    <td>{{ room.walls_finish|default:"—" }}</th>
+                                    <td>{{ room.floors_finish|default:"—" }}</th>
+                                    <td>{{ room.windows|default:"—" }}</th>
+                                    <td>{{ room.doors|default:"—" }}</th>
+                                    <td>{{ room.condition|default:"—" }}</th>
+                                    <td>{{ room.recommendations|default:"—" }}</th>
+                                </tr>
+                                {% empty %}
+                                    <tr><td colspan="9" class="text-muted text-center">Нет данных</th></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 4. Инженерные системы (группировка по секциям) -->
+        <div class="tab-pane fade" id="systems" role="tabpanel">
+            {% for section in building.sections.all %}
+                <div class="section-card">
+                    <div class="section-title"><i class="bi bi-building"></i> {{ section.name }}</div>
+                    <div class="subsection-title"><i class="bi bi-gear"></i> Инженерные системы</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-striped">
+                            <thead class="table-light">
+                                <td><th>Тип системы</th><th>Описание</th><th>Мощность</th><th>Последний ремонт</th><th>Счётчики</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for sys in building.systems.all %}
+                                    {% if sys.section == section %}
+                                    <tr>
+                                        <td>{{ sys.get_system_type_display }}</th>
+                                        <td>{{ sys.type_desc|default:"—" }}</th>
+                                        <td>{{ sys.power|default:"—" }}</th>
+                                        <td>{{ sys.last_repair_type|default:"—" }} {{ sys.last_repair_year|default:"" }}</th>
+                                        <td>
+                                            {% if sys.meter1_type %}{{ sys.meter1_type }} ({{ sys.meter1_number }}) поверка {{ sys.meter1_verification_date|date:"d.m.Y"|default:"—" }}{% endif %}
+                                            {% if sys.meter2_type %}<br>{{ sys.meter2_type }} ({{ sys.meter2_number }}) поверка {{ sys.meter2_verification_date|date:"d.m.Y"|default:"—" }}{% endif %}
+                                            {% if sys.meter3_type %}<br>{{ sys.meter3_type }} ({{ sys.meter3_number }}) поверка {{ sys.meter3_verification_date|date:"d.m.Y"|default:"—" }}{% endif %}
+                                        </th>
+                                    </tr>
+                                    {% endif %}
+                                {% empty %}
+                                    <tr><td colspan="5" class="text-muted text-center">Нет данных</th></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="empty-message">
+                    <i class="bi bi-info-circle"></i> Не заданы части здания.
+                    <a href="{% url 'admin:buildings_buildingsection_add' %}">Создайте секции</a> для отображения данных.
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- 5. Благоустройство (группировка по секциям) -->
+        <div class="tab-pane fade" id="landscaping" role="tabpanel">
+            {% for section in building.sections.all %}
+                <div class="section-card">
+                    <div class="section-title"><i class="bi bi-building"></i> {{ section.name }}</div>
+                    <div class="subsection-title"><i class="bi bi-tree"></i> Благоустройство территории</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-striped">
+                            <thead class="table-light">
+                                <tr><th>Элемент</th><th>Кол-во/площадь</th><th>Характеристика</th><th>Документы</th><th>Состояние</th><th>Рекомендации</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for l in building.landscaping.all %}
+                                    {% if l.section == section %}
+                                    <tr>
+                                        <td>{{ l.element }}</th>
+                                        <td>{{ l.quantity|default:"—" }}</th>
+                                        <td>{{ l.characteristic|default:"—" }}</th>
+                                        <td>{% if l.has_documents %}✅{% else %}❌{% endif %}</th>
+                                        <td>{{ l.condition|default:"—" }}</th>
+                                        <td>{{ l.recommendations|default:"—" }}</th>
+                                    </tr>
+                                    {% endif %}
+                                {% empty %}
+                                    <tr><td colspan="6" class="text-muted text-center">Нет данных</th></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- 6. Ремонты (группировка по секциям) -->
+        <div class="tab-pane fade" id="repairs" role="tabpanel">
+            {% for section in building.sections.all %}
+                <div class="section-card">
+                    <div class="section-title"><i class="bi bi-building"></i> {{ section.name }}</div>
+                    <div class="subsection-title"><i class="bi bi-hammer"></i> Ремонты</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-striped">
+                            <thead class="table-light">
+                                <tr><th>Объект</th><th>Вид</th><th>Период</th><th>Подрядчик</th><th>Сумма</th><th>Гарантия</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for r in building.repairs.all %}
+                                    {% if r.section == section %}
+                                    <tr>
+                                        <td>{{ r.object_name }}</th>
+                                        <td>{{ r.repair_type }}</th>
+                                        <td>{{ r.start_date|date:"d.m.Y" }} – {{ r.end_date|date:"d.m.Y" }}</th>
+                                        <td>{{ r.contractor|default:"—" }}</th>
+                                        <td>{{ r.contract_amount|default:"—" }}</th>
+                                        <td>{{ r.warranty_period|default:"—" }}</th>
+                                    </tr>
+                                    {% endif %}
+                                {% empty %}
+                                    <tr><td colspan="6" class="text-muted text-center">Нет данных</th></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- 7. Арендаторы (группировка по секциям) -->
+        <div class="tab-pane fade" id="tenants" role="tabpanel">
+            {% for section in building.sections.all %}
+                <div class="section-card">
+                    <div class="section-title"><i class="bi bi-building"></i> {{ section.name }}</div>
+                    <div class="subsection-title"><i class="bi bi-people"></i> Арендаторы</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-striped">
+                            <thead class="table-light">
+                                <tr><th>Наименование</th><th>Деятельность</th><th>Площадь</th><th>Срок</th><th>Договор</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for t in building.tenants.all %}
+                                    {% if t.section == section %}
+                                    <td>
+                                        <td>{{ t.name }}</th>
+                                        <td>{{ t.activity|default:"—" }}</th>
+                                        <td>{{ t.rented_areas|default:"—" }}</th>
+                                        <td>{{ t.lease_term|default:"—" }}</th>
+                                        <td>{{ t.contract_number|default:"—" }}</th>
+                                    </tr>
+                                    {% endif %}
+                                {% empty %}
+                                    <tr><td colspan="5" class="text-muted text-center">Нет данных</th></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- 8. Приложения и документы (группировка по секциям) -->
+        <div class="tab-pane fade" id="appendixes" role="tabpanel">
+            {% for section in building.sections.all %}
+                <div class="section-card">
+                    <div class="section-title"><i class="bi bi-building"></i> {{ section.name }}</div>
+                    <div class="subsection-title"><i class="bi bi-paperclip"></i> Приложения</div>
+                    <ul class="file-list">
+                        {% for a in building.appendixes.all %}
+                            {% if a.section == section %}
+                            <li><i class="bi bi-file-pdf text-danger"></i> <a href="{{ a.file.url }}" target="_blank">{{ a.get_appendix_type_display }}: {{ a.title|default:a.file.name }}</a></li>
+                            {% endif %}
+                        {% empty %}
+                            <li class="text-muted">Нет приложений</li>
+                        {% endfor %}
+                    </ul>
+                    <div class="subsection-title"><i class="bi bi-folder"></i> Документы</div>
+                    <ul class="file-list">
+                        {% for d in building.documents.all %}
+                            {% if d.section == section %}
+                            <li><i class="bi bi-file-pdf text-danger"></i> <a href="{{ d.file.url }}" target="_blank">{{ d.title|default:d.file.name }}</a></li>
+                            {% endif %}
+                        {% empty %}
+                            <li class="text-muted">Нет документов</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- 9. Проверки (общие, без секций) -->
+        <div class="tab-pane fade" id="inspections" role="tabpanel">
+            <div class="section-card">
+                <div class="section-title"><i class="bi bi-clipboard-check"></i> Проверки здания и сетей</div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered table-striped">
+                        <thead class="table-light">
+                            <tr><th>Дата</th><th>Причина</th><th>Проверяющий</th><th>Замечания</th><th>Заключение</th><th>Рекомендации</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for i in building.inspections.all|dictsortreversed:"inspection_date" %}
+                            <tr>
+                                <td>{{ i.inspection_date|date:"d.m.Y" }}</th>
+                                <td>{{ i.reason|default:"—" }}</th>
+                                <td>{{ i.inspector }}</th>
+                                <td>{{ i.findings }}</th>
+                                <td>{{ i.conclusion|default:"—" }}</th>
+                                <td>{{ i.recommendations|default:"—" }}</th>
+                            </tr>
+                            {% empty %}
+                                <tr><td colspan="6" class="text-muted text-center">Нет записей</th></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 10. Документы о собственности (без секций) -->
+        <div class="tab-pane fade" id="ownership" role="tabpanel">
+            <div class="section-card">
+                <div class="section-title"><i class="bi bi-file-earmark-text"></i> Документы о собственности</div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered table-striped">
+                        <thead class="table-light">
+                            <td><th>Название</th><th>Файл</th><th>Дата загрузки</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for doc in building.ownership_docs.all %}
+                            <tr>
+                                <td>{{ doc.title|default:"—" }}</th>
+                                <td><a href="{{ doc.file.url }}" target="_blank"><i class="bi bi-file-pdf text-danger"></i> {{ doc.file.name|slice:"-20:" }}</a></th>
+                                <td>{{ doc.uploaded_at|date:"d.m.Y H:i" }}</th>
+                            </tr>
+                            {% empty %}
+                                <tr><td colspan="3" class="text-muted text-center">Нет документов</th></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

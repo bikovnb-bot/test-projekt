@@ -1,0 +1,222 @@
+{% extends 'base.html' %}
+{% load custom_filters %}
+
+{% block title %}{% if form.instance.pk %}Редактирование заявки № {{ form.instance.request_number|escape }}{% else %}Новая заявка{% endif %}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        flatpickr(".datepicker", {
+            dateFormat: "d.m.Y",
+            locale: "ru",
+            allowInput: true
+        });
+        flatpickr(".datetimepicker", {
+            enableTime: true,
+            dateFormat: "d.m.Y H:i",
+            locale: "ru",
+            time_24hr: true,
+            allowInput: true
+        });
+    });
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>{% if form.instance.pk %}✏️ Редактирование заявки № {{ form.instance.request_number|escape }}{% else %}➕ Новая заявка{% endif %}</h2>
+        <a href="{% url 'requests_app:request_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+            <i class="bi bi-list-ul"></i> К списку заявок
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">Основная информация</h5>
+        </div>
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                {% if form.instance.pk %}
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <label class="form-label fw-semibold">Текущий статус</label>
+                        <div>
+                            {% if form.instance.status == 'new' or form.instance.status == 'NEW' %}
+                                <span class="badge bg-dark text-white">Новая</span>
+                            {% elif form.instance.status == 'in_progress' or form.instance.status == 'IN_PROGRESS' %}
+                                <span class="badge bg-primary">В работе</span>
+                            {% elif form.instance.status == 'completed' or form.instance.status == 'COMPLETED' %}
+                                <span class="badge bg-success">Выполнена</span>
+                            {% elif form.instance.status == 'closed' or form.instance.status == 'CLOSED' %}
+                                <span class="badge bg-secondary">Закрыта</span>
+                            {% elif form.instance.status == 'suspended' or form.instance.status == 'SUSPENDED' %}
+                                <span class="badge bg-warning text-dark">Приостановлена</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ form.instance.get_status_display|escape }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label for="{{ form.building.id_for_label }}" class="form-label small fw-semibold">
+                                {{ form.building.label }}{% if form.building.field.required %} <span class="text-danger">*</span>{% endif %}
+                            </label>
+                            {{ form.building }}
+                            {% if form.building.errors %}<div class="text-danger small">{{ form.building.errors }}</div>{% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.section.id_for_label }}" class="form-label small fw-semibold">
+                                {{ form.section.label }}
+                            </label>
+                            {{ form.section }}
+                            {% if form.section.errors %}<div class="text-danger small">{{ form.section.errors }}</div>{% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.room_number.id_for_label }}" class="form-label small fw-semibold">
+                                {{ form.room_number.label }}{% if form.room_number.field.required %} <span class="text-danger">*</span>{% endif %}
+                            </label>
+                            {{ form.room_number }}
+                            {% if form.room_number.errors %}<div class="text-danger small">{{ form.room_number.errors }}</div>{% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.request_type.id_for_label }}" class="form-label small fw-semibold">
+                                {{ form.request_type.label }}{% if form.request_type.field.required %} <span class="text-danger">*</span>{% endif %}
+                            </label>
+                            {{ form.request_type }}
+                            {% if form.request_type.errors %}<div class="text-danger small">{{ form.request_type.errors }}</div>{% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.priority.id_for_label }}" class="form-label small fw-semibold">
+                                {{ form.priority.label }}{% if form.priority.field.required %} <span class="text-danger">*</span>{% endif %}
+                            </label>
+                            {{ form.priority }}
+                            {% if form.priority.errors %}<div class="text-danger small">{{ form.priority.errors }}</div>{% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label for="{{ form.planned_date.id_for_label }}" class="form-label small fw-semibold">{{ form.planned_date.label }}</label>
+                            {{ form.planned_date }}
+                            {% if form.planned_date.errors %}<div class="text-danger small">{{ form.planned_date.errors }}</div>{% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="{{ form.created_at.id_for_label }}" class="form-label small fw-semibold">{{ form.created_at.label }}</label>
+                            {{ form.created_at }}
+                            {% if form.created_at.errors %}<div class="text-danger small">{{ form.created_at.errors }}</div>{% endif %}
+                        </div>
+                        <!-- Поле time_spent удалено -->
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label for="{{ form.description.id_for_label }}" class="form-label small fw-semibold">
+                                {{ form.description.label }}{% if form.description.field.required %} <span class="text-danger">*</span>{% endif %}
+                            </label>
+                            {{ form.description }}
+                            {% if form.description.errors %}<div class="text-danger small">{{ form.description.errors }}</div>{% endif %}
+                        </div>
+
+                        {% if files %}
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold">Прикреплённые файлы</label>
+                                <div class="list-group">
+                                    {% for file in files %}
+                                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <a href="{{ file.file.url }}" target="_blank" class="text-decoration-none">
+                                                    <i class="bi bi-file-earmark"></i> {{ file.get_file_name|escape }}
+                                                </a>
+                                                <br>
+                                                <small class="text-muted">{{ file.uploaded_at|date:"d.m.Y H:i" }}, загрузил: {{ file.uploaded_by|get_user_name|escape }}</small>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="delete_files" value="{{ file.id }}" id="del_file_{{ file.id }}">
+                                                <label class="form-check-label" for="del_file_{{ file.id }}">Удалить</label>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% endif %}
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold"><i class="bi bi-paperclip"></i> Файлы (можно несколько)</label>
+                            <input type="file" name="files" multiple class="form-control" id="fileInput">
+                            <div id="filePreview" class="mt-2 small text-muted"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end mt-3">
+                    <button type="submit" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 me-2"><i class="bi bi-save"></i> Сохранить</button>
+                    <a href="{% url 'requests_app:request_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1"><i class="bi bi-x-circle"></i> Отмена</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const fileInput = document.getElementById('fileInput');
+        const filePreview = document.getElementById('filePreview');
+        if (fileInput) {
+            fileInput.addEventListener('change', function() {
+                const files = Array.from(this.files);
+                if (files.length) {
+                    const names = files.map(f => f.name).join(', ');
+                    filePreview.innerHTML = `<i class="bi bi-file-earmark"></i> Выбрано: ${names}`;
+                } else {
+                    filePreview.innerHTML = '';
+                }
+            });
+        }
+
+        // Динамическая загрузка секций при выборе здания
+        const buildingSelect = document.getElementById('{{ form.building.id_for_label }}');
+        const sectionSelect = document.getElementById('{{ form.section.id_for_label }}');
+        if (buildingSelect && sectionSelect) {
+            function loadSections() {
+                const buildingId = buildingSelect.value;
+                sectionSelect.innerHTML = '<option value="">---------</option>';
+                if (buildingId) {
+                    fetch(`/requests/api/building-sections/?building_id=${buildingId}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            data.forEach(section => {
+                                const option = document.createElement('option');
+                                option.value = section.id;
+                                option.textContent = section.name;
+                                sectionSelect.appendChild(option);
+                            });
+                            // При редактировании: если есть сохранённая секция, выбираем её
+                            const currentSectionId = sectionSelect.getAttribute('data-current');
+                            if (currentSectionId) {
+                                sectionSelect.value = currentSectionId;
+                                sectionSelect.removeAttribute('data-current');
+                            }
+                        })
+                        .catch(error => console.error('Ошибка загрузки секций:', error));
+                }
+            }
+            buildingSelect.addEventListener('change', loadSections);
+            // При редактировании сохраняем текущую секцию в data-атрибут
+            {% if form.instance.pk and form.instance.section_id %}
+                sectionSelect.setAttribute('data-current', '{{ form.instance.section_id }}');
+            {% endif %}
+            loadSections();
+        }
+    });
+</script>
+{% endblock %}

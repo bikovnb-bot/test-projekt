@@ -1,0 +1,607 @@
+{% load custom_filters %}
+
+<style>
+    .btn-expand {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.7rem;
+        line-height: 1;
+    }
+    .stat-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+    .sticky-top {
+        position: sticky;
+        top: 0;
+        background: #f8f9fa;
+        z-index: 1;
+    }
+    .clickable-row {
+        cursor: pointer;
+    }
+</style>
+
+<!-- KPI -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card h-100 shadow-sm border-0" style="border-left-color: #0d6efd;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-muted">Всего заявок</h6>
+                        <h2 class="mb-0">{{ data.total_requests }}</h2>
+                    </div>
+                    <i class="bi bi-file-text fs-1 text-primary opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100 shadow-sm border-0" style="border-left-color: #28a745;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-muted">Выполнено / Закрыто</h6>
+                        <h2 class="mb-0">{{ data.completed_closed }}</h2>
+                        <small class="text-success">({{ data.completion_rate }}%)</small>
+                    </div>
+                    <i class="bi bi-check-circle fs-1 text-success opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100 shadow-sm border-0" style="border-left-color: #ffc107;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-muted">В работе</h6>
+                        <h2 class="mb-0">{{ data.in_progress }}</h2>
+                    </div>
+                    <i class="bi bi-hourglass-split fs-1 text-warning opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100 shadow-sm border-0" style="border-left-color: #17a2b8;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-muted">Среднее время выполнения</h6>
+                        <h2 class="mb-0">{{ data.avg_completion_hours }}</h2>
+                        <small class="text-muted">часов на заявку</small>
+                    </div>
+                    <i class="bi bi-clock-history fs-1 text-info opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Динамика за месяц и по месяцам -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-transparent fw-semibold py-2 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-calendar-week me-2"></i>Заявки за {{ data.current_month_name }} {{ data.selected_year }}</span>
+                <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle" data-bs-toggle="modal" data-bs-target="#dailyChartModal">
+                    <i class="bi bi-arrows-angle-expand"></i>
+                </button>
+            </div>
+            <div class="card-body pt-2">
+                <canvas id="dailyChart" height="180" style="max-height: 180px;"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-transparent fw-semibold py-2 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-calendar-month me-2"></i>Динамика по месяцам ({{ data.selected_year }})</span>
+                <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle" data-bs-toggle="modal" data-bs-target="#monthlyChartModal">
+                    <i class="bi bi-arrows-angle-expand"></i>
+                </button>
+            </div>
+            <div class="card-body pt-2">
+                <canvas id="monthlyChart" height="180" style="max-height: 180px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Круговые диаграммы -->
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100 d-flex flex-column">
+            <div class="card-header bg-transparent fw-semibold py-2 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-pie-chart me-2"></i>Распределение по статусам</span>
+                <div>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle me-1" data-bs-toggle="modal" data-bs-target="#statusChartModal">
+                        <i class="bi bi-arrows-angle-expand"></i>
+                    </button>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle toggle-legend" data-chart="statusChart">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body pt-0 d-flex flex-column">
+                <div class="mt-auto">
+                    <canvas id="statusChart" height="200" style="max-height: 200px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100 d-flex flex-column">
+            <div class="card-header bg-transparent fw-semibold py-2 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-tags me-2"></i>Топ-5 типов заявок</span>
+                <div>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle me-1" data-bs-toggle="modal" data-bs-target="#typeChartModal">
+                        <i class="bi bi-arrows-angle-expand"></i>
+                    </button>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle toggle-legend" data-chart="typeChart">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body pt-0 d-flex flex-column">
+                <div class="mt-auto">
+                    <canvas id="typeChart" height="200" style="max-height: 200px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100 d-flex flex-column">
+            <div class="card-header bg-transparent fw-semibold py-2 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-pie-chart me-2"></i>Распределение по приоритетам</span>
+                <div>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle me-1" data-bs-toggle="modal" data-bs-target="#priorityChartModal">
+                        <i class="bi bi-arrows-angle-expand"></i>
+                    </button>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle toggle-legend" data-chart="priorityChart">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body pt-0 d-flex flex-column">
+                <div class="mt-auto">
+                    <canvas id="priorityChart" height="200" style="max-height: 200px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Нижняя строка: просроченные и эффективность -->
+<div class="row g-4 mb-4">
+    <!-- Просроченные заявки по исполнителям (кликабельные строки) -->
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100 d-flex flex-column">
+            <div class="card-header bg-transparent fw-semibold py-2 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Просроченные заявки по исполнителям</span>
+                <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle" data-bs-toggle="modal" data-bs-target="#overdueModal">
+                    <i class="bi bi-arrows-angle-expand"></i>
+                </button>
+            </div>
+            <div class="card-body p-0 flex-grow-1 d-flex flex-column">
+                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr><th>Исполнитель</th><th>Просрочено</th><th>%</th></tr>
+                        </thead>
+                        <tbody>
+                            {% if data.overdue_assignee_stats %}
+                                {% for item in data.overdue_assignee_stats %}
+                                <tr class="overdue-assignee-row clickable-row" data-assignee-id="{{ item.assignee_id }}" data-assignee-name="{{ item.assignee_name }}">
+                                    <td class="fw-semibold">{{ item.assignee_name }}</td>
+                                    <td class="fw-semibold text-danger">{{ item.overdue_count }}</td>
+                                    <td>{{ item.percent }}%</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr><td colspan="3" class="text-center">Нет просроченных заявок</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Эффективность сотрудников -->
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100 d-flex flex-column">
+            <div class="card-header bg-transparent fw-semibold py-2 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-people me-2"></i>Эффективность сотрудников</span>
+                <div>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle me-1" data-bs-toggle="modal" data-bs-target="#efficiencyModal">
+                        <i class="bi bi-arrows-angle-expand"></i>
+                    </button>
+                    <button type="button" class="btn btn-expand btn-outline-secondary rounded-circle" id="exportEfficiencyPDF">
+                        <i class="bi bi-file-pdf text-danger"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0 flex-grow-1 d-flex flex-column">
+                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr><th>Сотрудник</th><th>Выполнено</th><th>Всего</th><th>%</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for w in data.worker_stats|slice:":5" %}
+                            <tr>
+                                <td class="fw-semibold">{{ w.name }}</td>
+                                <td>{{ w.completed }}</td>
+                                <td>{{ w.total_assigned }}</td>
+                                <td>{{ w.percent }}%</td>
+                            </tr>
+                            {% empty %}
+                                <td><td colspan="4" class="text-center">Нет данных</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if data.worker_stats|length > 5 %}
+                <div class="text-center mt-2 mb-2">
+                    <small class="text-muted">Показаны первые 5 записей. Нажмите <i class="bi bi-arrows-angle-expand"></i> для просмотра всех</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальные окна для увеличенных графиков -->
+<div class="modal fade" id="dailyChartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Динамика заявок за {{ data.current_month_name }} {{ data.selected_year }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><canvas id="dailyChartModalCanvas" height="400"></canvas></div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="monthlyChartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Динамика заявок по месяцам ({{ data.selected_year }})</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><canvas id="monthlyChartModalCanvas" height="400"></canvas></div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="statusChartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Распределение заявок по статусам</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><canvas id="statusChartModalCanvas" height="400"></canvas></div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="typeChartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Топ-5 типов заявок</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><canvas id="typeChartModalCanvas" height="400"></canvas></div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="priorityChartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">Распределение заявок по приоритетам</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><canvas id="priorityChartModalCanvas" height="400"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для полного списка просроченных (исправлено) -->
+<div class="modal fade" id="overdueModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Просроченные заявки по исполнителям (полный список)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr><th>Исполнитель</th><th>Просрочено</th><th>%</th></tr>
+                        </thead>
+                        <tbody>
+                            {% if data.overdue_assignee_stats %}
+                                {% for item in data.overdue_assignee_stats %}
+                                <tr>
+                                    <td class="fw-semibold">{{ item.assignee_name }}</td>
+                                    <td class="fw-semibold text-danger">{{ item.overdue_count }}</td>
+                                    <td>{{ item.percent }}%</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr><td colspan="3" class="text-center">Нет просроченных заявок</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для полного списка эффективности -->
+<div class="modal fade" id="efficiencyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Эффективность сотрудников (полный список)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr><th>Сотрудник</th><th>Выполнено</th><th>Всего</th><th>%</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for w in data.worker_stats %}
+                            <tr>
+                                <td class="fw-semibold">{{ w.name }}</td>
+                                <td>{{ w.completed }}</td>
+                                <td>{{ w.total_assigned }}</td>
+                                <td>{{ w.percent }}%</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для просроченных заявок конкретного исполнителя (детали) -->
+<div class="modal fade" id="overdueDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Просроченные заявки исполнителя</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="overdueDetailsBody">
+                <div class="text-center py-3">Загрузка...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Скрытый блок для печати PDF (полный список эффективности) -->
+<div id="printArea" style="display: none;">
+    <div style="padding: 20px; font-family: 'Inter', sans-serif;">
+        <h3 style="text-align: center;">Эффективность сотрудников за {{ data.current_month_name }} {{ data.selected_year }}</h3>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <thead>
+                <tr><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Сотрудник</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Выполнено</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Всего</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">%</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for w in data.worker_stats %}
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{{ w.name }}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{{ w.completed }}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{{ w.total_assigned }}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{{ w.percent }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Данные для графиков (из контекста Django)
+    const dayLabels = {{ data.day_labels|safe }};
+    const dayCreated = {{ data.day_created|safe }};
+    const dayCompleted = {{ data.day_completed|safe }};
+    const monthLabels = {{ data.month_labels|safe }};
+    const monthlyCreated = {{ data.monthly_created|safe }};
+    const statusLabels = {{ data.status_labels|safe }};
+    const statusData = {{ data.status_data|safe }};
+    const typeLabels = {{ data.type_labels|safe }};
+    const typeData = {{ data.type_data|safe }};
+    const priorityLabels = {{ data.priority_labels|safe }};
+    const priorityData = {{ data.priority_data|safe }};
+
+    // График динамики за месяц (столбчатая)
+    new Chart(document.getElementById('dailyChart'), {
+        type: 'bar',
+        data: {
+            labels: dayLabels,
+            datasets: [
+                { label: 'Создано', data: dayCreated, backgroundColor: '#0d6efd' },
+                { label: 'Закрыто', data: dayCompleted, backgroundColor: '#28a745' }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+
+    // График динамики по месяцам (линейный)
+    new Chart(document.getElementById('monthlyChart'), {
+        type: 'line',
+        data: {
+            labels: monthLabels,
+            datasets: [{ label: 'Количество заявок', data: monthlyCreated, borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,0.1)', fill: true, tension: 0.3 }]
+        },
+        options: { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+
+    // Круговые диаграммы (легенда скрыта по умолчанию)
+    const statusChart = new Chart(document.getElementById('statusChart'), {
+        type: 'pie',
+        data: { labels: statusLabels, datasets: [{ data: statusData, backgroundColor: ['#6c757d','#0d6efd','#198754','#dc3545','#ffc107'] }] },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+    });
+    const typeChart = new Chart(document.getElementById('typeChart'), {
+        type: 'pie',
+        data: { labels: typeLabels, datasets: [{ data: typeData, backgroundColor: ['#0d6efd','#198754','#ffc107','#dc3545','#fd7e14'] }] },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+    });
+    const priorityChart = new Chart(document.getElementById('priorityChart'), {
+        type: 'pie',
+        data: { labels: priorityLabels, datasets: [{ data: priorityData, backgroundColor: ['#6c757d','#0d6efd','#198754','#dc3545','#ffc107'] }] },
+        options: { responsive: true, plugins: { legend: { display: false } } }
+    });
+
+    // Переключение легенды для круговых диаграмм
+    let legendVisibility = { statusChart: false, typeChart: false, priorityChart: false };
+    function updateLegend(chartVar, isVisible) {
+        if (!chartVar) return;
+        chartVar.options.plugins.legend.display = isVisible;
+        chartVar.update();
+    }
+    document.querySelectorAll('.toggle-legend').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const chartId = this.dataset.chart;
+            if (!legendVisibility.hasOwnProperty(chartId)) return;
+            legendVisibility[chartId] = !legendVisibility[chartId];
+            const icon = this.querySelector('i');
+            if (legendVisibility[chartId]) {
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+                this.title = 'Скрыть легенду';
+            } else {
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+                this.title = 'Показать легенду';
+            }
+            if (chartId === 'statusChart') updateLegend(statusChart, legendVisibility[chartId]);
+            if (chartId === 'typeChart') updateLegend(typeChart, legendVisibility[chartId]);
+            if (chartId === 'priorityChart') updateLegend(priorityChart, legendVisibility[chartId]);
+        });
+    });
+
+    // Модальные окна для увеличенных копий графиков
+    let modalCharts = {};
+    function createModalChart(chartId, type, dataConfig, options) {
+        const canvas = document.getElementById(chartId);
+        if (!canvas) return null;
+        return new Chart(canvas.getContext('2d'), { type, data: dataConfig, options });
+    }
+
+    document.getElementById('dailyChartModal').addEventListener('shown.bs.modal', function () {
+        if (modalCharts.daily) modalCharts.daily.destroy();
+        modalCharts.daily = createModalChart('dailyChartModalCanvas', 'bar', {
+            labels: dayLabels,
+            datasets: [
+                { label: 'Создано', data: dayCreated, backgroundColor: '#0d6efd' },
+                { label: 'Закрыто', data: dayCompleted, backgroundColor: '#28a745' }
+            ]
+        }, { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } });
+    });
+    document.getElementById('dailyChartModal').addEventListener('hidden.bs.modal', function () { if (modalCharts.daily) modalCharts.daily.destroy(); });
+
+    document.getElementById('monthlyChartModal').addEventListener('shown.bs.modal', function () {
+        if (modalCharts.monthly) modalCharts.monthly.destroy();
+        modalCharts.monthly = createModalChart('monthlyChartModalCanvas', 'line', {
+            labels: monthLabels,
+            datasets: [{ label: 'Количество заявок', data: monthlyCreated, borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,0.1)', fill: true, tension: 0.3 }]
+        }, { responsive: true, maintainAspectRatio: true, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } });
+    });
+    document.getElementById('monthlyChartModal').addEventListener('hidden.bs.modal', function () { if (modalCharts.monthly) modalCharts.monthly.destroy(); });
+
+    document.getElementById('statusChartModal').addEventListener('shown.bs.modal', function () {
+        if (modalCharts.status) modalCharts.status.destroy();
+        modalCharts.status = createModalChart('statusChartModalCanvas', 'pie', {
+            labels: statusLabels,
+            datasets: [{ data: statusData, backgroundColor: ['#6c757d','#0d6efd','#198754','#dc3545','#ffc107'] }]
+        }, { responsive: true });
+    });
+    document.getElementById('statusChartModal').addEventListener('hidden.bs.modal', function () { if (modalCharts.status) modalCharts.status.destroy(); });
+
+    document.getElementById('typeChartModal').addEventListener('shown.bs.modal', function () {
+        if (modalCharts.type) modalCharts.type.destroy();
+        modalCharts.type = createModalChart('typeChartModalCanvas', 'pie', {
+            labels: typeLabels,
+            datasets: [{ data: typeData, backgroundColor: ['#0d6efd','#198754','#ffc107','#dc3545','#fd7e14'] }]
+        }, { responsive: true });
+    });
+    document.getElementById('typeChartModal').addEventListener('hidden.bs.modal', function () { if (modalCharts.type) modalCharts.type.destroy(); });
+
+    document.getElementById('priorityChartModal').addEventListener('shown.bs.modal', function () {
+        if (modalCharts.priority) modalCharts.priority.destroy();
+        modalCharts.priority = createModalChart('priorityChartModalCanvas', 'pie', {
+            labels: priorityLabels,
+            datasets: [{ data: priorityData, backgroundColor: ['#6c757d','#0d6efd','#198754','#dc3545','#ffc107'] }]
+        }, { responsive: true });
+    });
+    document.getElementById('priorityChartModal').addEventListener('hidden.bs.modal', function () { if (modalCharts.priority) modalCharts.priority.destroy(); });
+
+    // ========== Клик по строке просроченного исполнителя ==========
+    document.querySelectorAll('.overdue-assignee-row').forEach(row => {
+        row.addEventListener('click', function() {
+            const assigneeId = this.dataset.assigneeId;
+            const assigneeName = this.dataset.assigneeName;
+            const modalBody = document.getElementById('overdueDetailsBody');
+            modalBody.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-primary" role="status"></div><p>Загрузка...</p></div>';
+            const modal = new bootstrap.Modal(document.getElementById('overdueDetailsModal'));
+            modal.show();
+            
+            fetch(`/requests/api/overdue-requests/?assignee_id=${encodeURIComponent(assigneeId)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.requests && data.requests.length > 0) {
+                        let html = '<div class="table-responsive"><table class="table table-hover"><thead class="table-light"><tr><th>№ заявки</th><th>Описание</th><th>Плановая дата</th><th>Статус</th><th></th></tr></thead><tbody>';
+                        data.requests.forEach(req => {
+                            html += `<tr>
+                                <td><strong>${req.request_number}</strong></td>
+                                <td>${req.description.substring(0, 100)}${req.description.length > 100 ? '…' : ''}</td>
+                                <td><span class="badge bg-danger">${req.planned_date}</span></td>
+                                <td>${req.status_display}</td>
+                                <td><a href="/requests/${req.id}/" target="_blank" class="btn btn-sm btn-outline-primary">Открыть <i class="bi bi-box-arrow-up-right"></i></a></td>
+                            </tr>`;
+                        });
+                        html += '</tbody></table></div>';
+                        modalBody.innerHTML = html;
+                        document.querySelector('#overdueDetailsModal .modal-title').innerHTML = `Просроченные заявки исполнителя: ${assigneeName}`;
+                    } else {
+                        modalBody.innerHTML = '<div class="text-center py-3 text-muted">Нет просроченных заявок у этого исполнителя</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка:', error);
+                    modalBody.innerHTML = '<div class="text-center text-danger py-3">Ошибка загрузки данных</div>';
+                });
+        });
+    });
+
+    // ========== Экспорт PDF эффективности (через диалог печати) ==========
+    const exportBtn = document.getElementById('exportEfficiencyPDF');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', function() {
+            const printContent = document.getElementById('printArea').innerHTML;
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <html>
+                <head><title>Эффективность сотрудников</title>
+                <style>
+                    body { font-family: 'Inter', sans-serif; margin: 20px; }
+                    table { width: 100%; border-collapse: collapse; }
+                    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+                    th { background-color: #f2f2f2; }
+                </style>
+                </head>
+                <body>${printContent}</body>
+                </html>
+            `);
+            printWindow.document.close();
+            printWindow.print();
+        });
+    }
+});
+</script>

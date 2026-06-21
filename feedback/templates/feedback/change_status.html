@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Изменить статус{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <h2 class="mb-4">Изменить статус</h2>
+        <div class="card">
+            <div class="card-body">
+                <p><strong>{{ item.title }}</strong><br>{{ item.description|truncatewords:30 }}</p>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Новый статус</label>
+                        <select name="status" class="form-select">
+                            {% for value, label in status_choices %}
+                                <option value="{{ value }}" {% if item.status == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                    <a href="{% if type == 'suggestion' %}{% url 'feedback:all_suggestions' %}{% else %}{% url 'feedback:all_bugs' %}{% endif %}" class="btn btn-secondary">Назад</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Сброс начальных показаний{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>🔄 Сброс начальных показаний для счётчика</h2>
+    <a href="{% url 'energy:meter_detail' meter.pk %}" class="btn btn-secondary">← Назад</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-warning text-dark">
+        <strong><i class="bi bi-exclamation-triangle"></i> Внимание!</strong>
+    </div>
+    <div class="card-body">
+        <p>Эта операция изменяет начальные показания счётчика и устанавливает дату сброса (замены прибора).</p>
+        <p class="text-danger">
+            <strong>Важно:</strong> Все показания, введённые <strong>начиная с указанной даты сброса</strong>, 
+            будут пересчитаны от новых начальных значений. Показания до этой даты останутся без изменений.
+        </p>
+        <p>Это используется при <strong>замене прибора учёта</strong>, когда новый счётчик начинает отсчёт с нуля или другого значения.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-primary text-white">
+        <strong><i class="bi bi-calendar"></i> Параметры сброса</strong>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            {% for field in form %}
+                <div class="mb-3">
+                    <label for="{{ field.id_for_label }}" class="form-label fw-semibold">
+                        {{ field.label }}
+                    </label>
+                    {{ field }}
+                    {% if field.help_text %}
+                        <div class="form-text text-muted small">{{ field.help_text }}</div>
+                    {% endif %}
+                    {% if field.errors %}
+                        <div class="text-danger small mt-1">{{ field.errors }}</div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+            <div class="d-flex justify-content-end mt-4">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="bi bi-save"></i> Сохранить
+                </button>
+                <a href="{% url 'energy:meter_detail' meter.pk %}" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Отмена
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header bg-light">
+        <strong><i class="bi bi-info-circle"></i> Как это работает</strong>
+    </div>
+    <div class="card-body">
+        <ol class="mb-0">
+            <li>Вы указываете <strong>дату сброса</strong> – день, когда был установлен новый прибор (или когда старый был обнулён).</li>
+            <li>Задаёте <strong>новое начальное показание</strong> (для однотарифных) или начальные значения по зонам (для многотарифных).</li>
+            <li>После сохранения система пересчитает <strong>потребление</strong> для всех показаний, начиная с этой даты, используя новые начальные значения.</li>
+            <li>Показания до даты сброса остаются без изменений – они относятся к старому прибору.</li>
+            <li>Если вы уже вводили показания после даты сброса, их потребление будет пересчитано автоматически.</li>
+        </ol>
+    </div>
+</div>
+{% endblock %}

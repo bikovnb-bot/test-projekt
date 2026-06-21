@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}Общий дашборд{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 mt-3">
+    <h2 class="mb-4 fw-bold"><i class="bi bi-speedometer2 text-primary me-2"></i> Общий дашборд</h2>
+
+    <!-- КОМПАКТНЫЙ ФИЛЬТР -->
+    <div class="compact-filter py-2 px-3 mb-3">
+        <form method="get" class="d-flex align-items-center flex-wrap gap-2" id="filterForm">
+            <div class="filter-item">
+                <label for="year">Год</label>
+                <select name="year" id="year">
+                    {% for y in available_years %}
+                    <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-item">
+                <label for="month">Месяц</label>
+                <select name="month" id="month">
+                    {% for m_val, m_name in available_months %}
+                    <option value="{{ m_val }}" {% if m_val == selected_month %}selected{% endif %}>{{ m_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm rounded-pill px-3">Применить</button>
+        </form>
+    </div>
+
+    <!-- Вкладки -->
+    <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="contracts-tab" data-bs-toggle="tab" data-bs-target="#contracts" type="button" role="tab">
+                <i class="bi bi-file-text me-1"></i> Договоры
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="requests-tab" data-bs-toggle="tab" data-bs-target="#requests" type="button" role="tab">
+                <i class="bi bi-clipboard me-1"></i> Заявки
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="energy-tab" data-bs-toggle="tab" data-bs-target="#energy" type="button" role="tab">
+                <i class="bi bi-battery-charging me-1"></i> Энергетика
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="dashboardTabsContent">
+        <div class="tab-pane fade show active" id="contracts" role="tabpanel">
+            {% include "core/partials/contracts_dashboard.html" with data=contracts %}
+        </div>
+        <div class="tab-pane fade" id="requests" role="tabpanel">
+            {% include "core/partials/requests_dashboard.html" with data=requests %}
+        </div>
+        <div class="tab-pane fade" id="energy" role="tabpanel">
+            {% include "core/partials/energy_dashboard.html" with data=energy %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+    (function() {
+        // Ключ для localStorage
+        const STORAGE_KEY = 'dashboardActiveTab';
+
+        // Функция сохранения активной вкладки
+        function saveActiveTab(targetId) {
+            if (targetId) {
+                localStorage.setItem(STORAGE_KEY, targetId);
+            }
+        }
+
+        // Функция активации вкладки по сохранённому идентификатору
+        function restoreActiveTab() {
+            const savedTarget = localStorage.getItem(STORAGE_KEY);
+            if (savedTarget) {
+                // Находим кнопку, у которой data-bs-target совпадает с сохранённым значением
+                const tabButton = document.querySelector(`.nav-tabs button[data-bs-target="${savedTarget}"]`);
+                if (tabButton && typeof bootstrap !== 'undefined') {
+                    // Используем Bootstrap API для переключения вкладки
+                    const tab = new bootstrap.Tab(tabButton);
+                    tab.show();
+                } else if (tabButton) {
+                    // fallback: клик по кнопке
+                    tabButton.click();
+                }
+            }
+        }
+
+        // Отслеживаем клики по вкладкам и сохраняем выбранную
+        const tabButtons = document.querySelectorAll('.nav-tabs button[data-bs-toggle="tab"]');
+        tabButtons.forEach(button => {
+            button.addEventListener('shown.bs.tab', function(event) {
+                const target = event.target.getAttribute('data-bs-target');
+                saveActiveTab(target);
+            });
+        });
+
+        // При загрузке страницы восстанавливаем вкладку
+        document.addEventListener('DOMContentLoaded', function() {
+            restoreActiveTab();
+        });
+    })();
+</script>
+{% endblock %}

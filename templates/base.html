@@ -1,0 +1,451 @@
+{% load static %}
+{% load custom_filters %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Учёт эксплуатации зданий{% endblock %}</title>
+    
+    <!-- Bootstrap и другие CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+    
+    <!-- Новые файлы стилей -->
+<link rel="stylesheet" href="{% static 'css/core.css' %}">
+<link rel="stylesheet" href="{% static 'css/buttons.css' %}">
+<link rel="stylesheet" href="{% static 'css/forms.css' %}">
+<link rel="stylesheet" href="{% static 'css/navigation.css' %}">
+<link rel="stylesheet" href="{% static 'css/cards-tables.css' %}">
+<link rel="stylesheet" href="{% static 'css/modals-alerts.css' %}">
+<link rel="stylesheet" href="{% static 'css/utilities.css' %}">
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.3.2/css/flag-icons.min.css">
+    
+    <!-- FAVICON -->
+    <link rel="icon" type="image/x-icon" href="{% static 'favicon.ico' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'favicon-16x16.png' %}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon-32x32.png' %}">
+    <link rel="icon" type="image/png" sizes="48x48" href="{% static 'favicon-48x48.png' %}">
+    <link rel="icon" type="image/png" sizes="64x64" href="{% static 'favicon-64x64.png' %}">
+    <link rel="icon" type="image/png" sizes="128x128" href="{% static 'favicon-128x128.png' %}">
+    <link rel="icon" type="image/png" sizes="256x256" href="{% static 'favicon-256x256.png' %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'apple-touch-icon.png' %}">
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% if not hide_navbar %}
+    <!-- Верхняя узкая полоса с датой и временем -->
+    <div class="top-bar">
+        <div class="top-bar-content">
+            <div class="datetime-info">
+                <i class="bi bi-calendar3"></i>
+                <span id="currentDate"></span>
+                <i class="bi bi-clock ms-2"></i>
+                <span id="currentTime"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Полноширинное меню с логотипом внутри -->
+    <div class="full-width-menu">
+        <ul class="mcd-menu">
+            <!-- Бургер для админа -->
+            {% if user.is_superuser %}
+            <li>
+                <button class="offcanvas-trigger" type="button" data-bs-toggle="offcanvas" data-bs-target="#adminOffcanvas">
+                    <i class="bi bi-grid-3x3-gap-fill"></i>
+                </button>
+            </li>
+            {% endif %}
+
+            <!-- Логотип как пункт меню (изображение + текст) -->
+            <li class="logo-menu-item">
+                <a href="{% url 'core:home' %}" class="logo-link">
+                    <div class="logo-image">
+                        <img src="{% static 'images/logo.png' %}" alt="Логотип">
+                    </div>
+                    <div class="logo-info">
+                        <div class="logo-slogan">Умный учёт и контроль</div>
+                        <div class="logo-version">
+                            <span class="logo-badge">v3.0</span> Цифровая эксплуатация
+                        </div>
+                    </div>
+                </a>
+            </li>
+
+            <!-- Главная -->
+            <li>
+                <a href="{% url 'core:home' %}">
+                    <i class="bi bi-house-door"></i>
+                    <strong>Главная</strong>
+                    <small>home</small>
+                </a>
+            </li>
+
+            <!-- ОБЩИЙ ДАШБОРД -->
+            <li>
+                <a href="{% url 'core:unified_dashboard' %}">
+                    <i class="bi bi-speedometer2"></i>
+                    <strong>Дашборд</strong>
+                    <small>dashboard</small>
+                </a>
+            </li>
+
+            <!-- Договоры (прямая ссылка на список, без подменю) -->
+            <li>
+                <a href="{% url 'exploitation_app:contract_list' %}">
+                    <i class="bi bi-file-text"></i>
+                    <strong>Договоры</strong>
+                    <small>contracts</small>
+                </a>
+            </li>
+
+            <!-- Заявки -->
+            <li>
+                <a href="#">
+                    <i class="bi bi-clipboard"></i>
+                    <strong>Заявки</strong>
+                    <small>requests</small>
+                </a>
+                <ul>
+                    <li><a href="{% url 'requests_app:request_list' %}"><i class="bi bi-list-ul"></i>Список заявок</a></li>
+                    <li><a href="{% url 'requests_app:request_create' %}"><i class="bi bi-plus-circle"></i>Новая заявка</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a href="{% url 'requests_app:material_stock' %}"><i class="bi bi-box-seam"></i>Материалы на складе</a></li>
+                    {% if user.is_authenticated and user.profile.role == 'ADMIN' %}
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a href="{% url 'requests_app:public_request_create' %}?lang=ru"><i class="bi bi-envelope-paper"></i>Публичная форма</a></li>
+                    {% endif %}
+                </ul>
+            </li>
+
+            <!-- Приборы учёта -->
+            <li>
+                <a href="#">
+                    <i class="bi bi-battery-charging"></i>
+                    <strong>Приборы</strong>
+                    <small>energy</small>
+                </a>
+                <ul>
+                    <li><a href="{% url 'energy:meter_list' %}"><i class="bi bi-grid-3x3-gap-fill"></i>Список приборов</a></li>
+                    <li><a href="{% url 'energy:consumption_report' %}"><i class="bi bi-graph-up"></i>Отчёт по потреблению</a></li>
+                    <li><a href="{% url 'energy:anomaly_report' %}"><i class="bi bi-exclamation-triangle"></i>Аномалии</a></li>
+                    <li><a href="{% url 'energy:import_readings' %}"><i class="bi bi-upload"></i>Импорт показаний</a></li>
+                    <li><a href="{% url 'energy:export_readings' %}"><i class="bi bi-download"></i>Экспорт истории</a></li>
+                </ul>
+            </li>
+
+            <!-- Имущество (с подменю) -->
+<li>
+    <a href="#">
+        <i class="bi bi-boxes"></i>
+        <strong>Имущество</strong>
+        <small>assets</small>
+    </a>
+    <ul>
+        <li><a href="{% url 'assets:asset_list' %}"><i class="bi bi-list-ul"></i>Список имущества</a></li>
+        <li><a href="{% url 'assets:inventory_scan' %}"><i class="bi bi-qr-code-scan"></i>Инвентаризация</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a href="{% url 'assets:inventory_history' %}"><i class="bi bi-clock-history"></i>История инвентаризаций</a></li>
+        <li><a href="{% url 'assets:asset_report' %}"><i class="bi bi-file-earmark-text"></i>Отчёт по имуществу</a></li>
+    </ul>
+</li>
+            <!-- Администрирование (только admin/staff) -->
+            {% if is_admin or user.is_staff %}
+            <li>
+                <a href="#">
+                    <i class="bi bi-gear"></i>
+                    <strong>Админ</strong>
+                    <small>settings</small>
+                </a>
+                <ul>
+                    {% if is_admin %}<li><a href="{% url 'users:user_list' %}"><i class="bi bi-people"></i>Пользователи</a></li>{% endif %}
+                    {% if user.is_staff %}<li><a href="/admin/"><i class="bi bi-shield-lock"></i>Админка Django</a></li>{% endif %}
+                </ul>
+            </li>
+            {% endif %}
+
+            <!-- Профиль пользователя -->
+            {% if user.is_authenticated %}
+            <li class="menu-right">
+                <a href="#">
+                    <i class="bi bi-person-circle"></i>
+                    <strong>{{ user.get_full_name|default:user.username }}</strong>
+                    <small>profile</small>
+                </a>
+                <ul>
+                    <li><a href="{% url 'users:profile_edit' %}"><i class="bi bi-person-badge"></i>Мой профиль</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a href="{% url 'feedback:add_bug' %}"><i class="bi bi-bug"></i>Сообщить о баге</a></li>
+                    <li><a href="{% url 'feedback:add_suggestion' %}"><i class="bi bi-lightbulb"></i>Внести предложение</a></li>
+                    <li><a href="{% url 'feedback:my_bugs' %}"><i class="bi bi-list-ul"></i>Мои баги</a></li>
+                    <li><a href="{% url 'feedback:my_suggestions' %}"><i class="bi bi-list-ul"></i>Мои предложения</a></li>
+                    {% if user.is_superuser %}
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a href="{% url 'feedback:all_bugs' %}"><i class="bi bi-eye"></i>Все баги (админ)</a></li>
+                    <li><a href="{% url 'feedback:all_suggestions' %}"><i class="bi bi-eye"></i>Все предложения (админ)</a></li>
+                    {% endif %}
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <form method="post" action="{% url 'logout' %}" style="margin:0">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item text-danger"><i class="bi bi-box-arrow-right"></i>Выйти</button>
+                        </form>
+                    </li>
+                </ul>
+            </li>
+            {% else %}
+            <li class="menu-right">
+                <a href="{% url 'login' %}">
+                    <i class="bi bi-key"></i>
+                    <strong>Войти</strong>
+                    <small>login</small>
+                </a>
+            </li>
+            {% endif %}
+        </ul>
+    </div>
+
+    <!-- Скрипт для мобильного меню (клик по пунктам с подменю) -->
+    <script>
+    (function() {
+        const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        if (isTouch) {
+            const itemsWithSubmenu = document.querySelectorAll('.mcd-menu > li:has(ul)');
+            itemsWithSubmenu.forEach(item => {
+                const link = item.querySelector('> a');
+                if (link) {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const sub = item.querySelector('ul');
+                        if (sub) {
+                            document.querySelectorAll('.mcd-menu > li ul').forEach(ul => {
+                                if (ul !== sub) {
+                                    ul.style.opacity = '0';
+                                    ul.style.visibility = 'hidden';
+                                }
+                            });
+                            const isVisible = sub.style.visibility === 'visible';
+                            sub.style.visibility = isVisible ? 'hidden' : 'visible';
+                            sub.style.opacity = isVisible ? '0' : '1';
+                        }
+                    });
+                }
+            });
+        }
+    })();
+    </script>
+    {% endif %}
+
+    <!-- Основной контент -->
+    <main class="container mt-4">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <div class="container">
+            <span class="text-muted">© {% now "Y" %} Система учёта эксплуатации зданий</span>
+        </div>
+    </footer>
+
+    <!-- Offcanvas для администратора -->
+    {% if not hide_navbar and user.is_superuser %}
+    <div class="offcanvas offcanvas-start" tabindex="-1" id="adminOffcanvas" aria-labelledby="adminOffcanvasLabel" style="width: 300px;">
+        <div class="offcanvas-header border-bottom">
+            <h5 class="offcanvas-title" id="adminOffcanvasLabel">
+                <i class="bi bi-shield-lock"></i> Администрирование
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body">
+            <div class="accordion" id="adminAccordion">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingOperation">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOperation">
+                            <i class="bi bi-building me-2"></i> Эксплуатация
+                        </button>
+                    </h2>
+                    <div id="collapseOperation" class="accordion-collapse collapse" data-bs-parent="#adminAccordion">
+                        <div class="accordion-body p-0">
+                            <div class="list-group list-group-flush">
+                                <a href="{% url 'buildings:building_list' %}" class="list-group-item list-group-item-action">
+                                    <i class="bi bi-file-text me-2"></i> Паспорта зданий
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingService">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseService">
+                            <i class="bi bi-tools me-2"></i> Служебное
+                        </button>
+                    </h2>
+                    <div id="collapseService" class="accordion-collapse collapse" data-bs-parent="#adminAccordion">
+                        <div class="accordion-body p-0">
+                            <div class="list-group list-group-flush">
+                                <div class="list-group-item">
+                                    <a href="#backupSubmenu" data-bs-toggle="collapse" class="d-flex align-items-center text-decoration-none text-dark">
+                                        <i class="bi bi-database me-2"></i> Бэкапы
+                                        <i class="bi bi-chevron-down ms-auto"></i>
+                                    </a>
+                                    <div class="collapse" id="backupSubmenu">
+                                        <div class="ps-3 mt-2">
+                                            <strong class="text-secondary small">Договоры</strong>
+                                            <a href="{% url 'exploitation_app:export_full_backup' %}" class="d-block py-1 text-secondary">Экспорт (Excel)</a>
+                                            <a href="{% url 'exploitation_app:import_full_backup' %}" class="d-block py-1 text-secondary">Восстановить</a>
+                                            <hr>
+                                            <strong class="text-secondary small">Заявки</strong>
+                                            <a href="{% url 'requests_app:export_requests_full_backup' %}" class="d-block py-1 text-secondary">Экспорт (Excel)</a>
+                                            <a href="{% url 'requests_app:import_requests_full_backup' %}" class="d-block py-1 text-secondary">Восстановить</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Библиотеки и скрипты -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/imask"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Flatpickr
+            flatpickr(".datepicker, input[type='date'], input[name$='_date'], input[id$='_date']", {
+                dateFormat: "d.m.Y",
+                locale: "ru",
+                allowInput: true,
+                altInput: true,
+                altFormat: "d.m.Y",
+                disableMobile: true,
+                animate: true,
+                onReady: (selectedDates, dateStr, instance) => {
+                    instance.calendarContainer.classList.add('flatpickr-calendar-modern');
+                }
+            });
+
+            // Маска телефона
+            const phoneInput = document.getElementById('id_contractor_contact_phone');
+            if (phoneInput) {
+                IMask(phoneInput, { mask: '+{7} (000) 000-00-00', lazy: false, placeholderChar: '_' });
+            }
+
+            // Прогресс-бар при отправке форм
+            document.querySelectorAll('form').forEach(form => {
+                if (!form.querySelector('#formProgress')) {
+                    const progressDiv = document.createElement('div');
+                    progressDiv.id = 'formProgress';
+                    progressDiv.style.display = 'none';
+                    progressDiv.innerHTML = `<div class="progress mt-3"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%">Отправка...</div></div>`;
+                    form.appendChild(progressDiv);
+                }
+                form.addEventListener('submit', function(e) {
+                    const submitBtn = this.querySelector('button[type="submit"], input[type="submit"]');
+                    if (submitBtn && submitBtn.disabled) {
+                        e.preventDefault();
+                        return;
+                    }
+                    const progressDiv = this.querySelector('#formProgress');
+                    if (progressDiv) progressDiv.style.display = 'block';
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Сохранение...';
+                    }
+                });
+            });
+
+            // Live-валидация
+            function validateField(field) {
+                let isValid = true;
+                let errorMsg = '';
+                const value = field.value.trim();
+                if (field.required && !value) {
+                    isValid = false;
+                    errorMsg = 'Это поле обязательно.';
+                } else if (field.type === 'email' && value && !/^\S+@\S+\.\S+$/.test(value)) {
+                    isValid = false;
+                    errorMsg = 'Введите корректный email.';
+                } else if (field.type === 'number' && value && isNaN(parseFloat(value))) {
+                    isValid = false;
+                    errorMsg = 'Введите число.';
+                } else if (field.id === 'id_total_amount' && value) {
+                    const clean = value.replace(/\s/g, '').replace(',', '.');
+                    if (isNaN(parseFloat(clean))) {
+                        isValid = false;
+                        errorMsg = 'Введите корректную сумму.';
+                    }
+                }
+                if (isValid) {
+                    field.classList.remove('is-invalid');
+                    const errorDiv = field.parentElement?.querySelector('.invalid-feedback');
+                    if (errorDiv) errorDiv.remove();
+                } else {
+                    field.classList.add('is-invalid');
+                    let errorDiv = field.parentElement?.querySelector('.invalid-feedback');
+                    if (!errorDiv) {
+                        errorDiv = document.createElement('div');
+                        errorDiv.className = 'invalid-feedback';
+                        field.parentElement?.appendChild(errorDiv);
+                    }
+                    errorDiv.textContent = errorMsg;
+                }
+            }
+
+            document.querySelectorAll('form input, form select, form textarea').forEach(field => {
+                field.addEventListener('blur', () => validateField(field));
+                field.addEventListener('input', () => {
+                    if (field.classList.contains('is-invalid')) validateField(field);
+                });
+            });
+
+            // Автоскрытие сообщений
+            document.querySelectorAll('.alert').forEach(alert => {
+                setTimeout(() => {
+                    alert.classList.add('fade-out');
+                    setTimeout(() => alert.remove(), 500);
+                }, 5000);
+            });
+
+            // Bootstrap tooltips
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+
+            // Обновление даты и времени в верхней панели
+            function updateDateTime() {
+                const now = new Date();
+                const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' };
+                const dateStr = now.toLocaleDateString('ru-RU', options);
+                const timeStr = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                const dateElem = document.getElementById('currentDate');
+                const timeElem = document.getElementById('currentTime');
+                if (dateElem) dateElem.textContent = dateStr;
+                if (timeElem) timeElem.textContent = timeStr;
+            }
+            updateDateTime();
+            setInterval(updateDateTime, 60000);
+        });
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

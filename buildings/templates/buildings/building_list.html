@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Список зданий{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4 fw-semibold"><i class="bi bi-building text-primary me-2"></i> Список зданий</h1>
+    <div class="card card-table">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-modern table-hover align-middle">
+                    <thead>
+                        <tr><th>Название</th><th>Адрес</th><th>Кадастровый номер</th><th>Паспорт</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for building in buildings %}
+                        <tr>
+                            <td class="fw-semibold">{{ building.name|default:"—" }}</td>
+                            <td>{{ building.address }}</td>
+                            <td>{{ building.cadastral_number }}</td>
+                            <td><a href="{% url 'buildings:passport_detail' building.id %}" class="btn btn-sm btn-outline-primary rounded-pill px-3"><i class="bi bi-file-text"></i> Паспорт</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
