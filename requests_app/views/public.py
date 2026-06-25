@@ -16,7 +16,7 @@ from django.utils import timezone
 from buildings.models import Building, BuildingSection
 from ..models import RequestSettings, RequestFile, ServiceRequest, RequestType
 from ..forms import PublicRequestForm
-from .utils import send_telegram_notification, rate_limit, generate_new_captcha
+from ..utils import send_telegram_notification, rate_limit, generate_new_captcha
 from ..translator import translate_to_russian
 
 logger = logging.getLogger(__name__)

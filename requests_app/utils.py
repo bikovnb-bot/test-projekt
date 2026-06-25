@@ -1,4 +1,6 @@
 # requests_app/utils.py
+import random
+import logging
 import requests
 from datetime import datetime
 
@@ -7,36 +9,33 @@ from django.http import HttpResponseForbidden
 from django.conf import settings
 from users.decorators import is_viewer, is_manager, is_admin
 
+# Используем абсолютный импорт сервиса уведомлений
+from requests_app.services.notification_service import NotificationService
+
+logger = logging.getLogger(__name__)
+
 
 def can_view_all_requests(user):
-    """Может ли пользователь просматривать все заявки?"""
     return is_viewer(user)
 
 
 def can_edit_any_request(user):
-    """Может ли пользователь редактировать любую заявку?"""
     return is_manager(user)
 
 
 def can_delete_request(user):
-    """Может ли пользователь удалять заявки?"""
     return is_admin(user)
 
 
 def can_assign_request(user):
-    """Может ли пользователь назначать исполнителей?"""
     return is_manager(user) or is_admin(user)
 
 
 def is_assignee_or_creator(user, request_obj):
-    """Является ли пользователь исполнителем или создателем заявки?"""
     return request_obj.assigned_to == user or request_obj.created_by == user
 
 
 def rate_limit(limit=None, window=None):
-    """
-    Декоратор ограничения количества запросов с одного IP.
-    """
     def decorator(view_func):
         def wrapped(request, *args, **kwargs):
             _limit = limit if limit is not None else getattr(settings, 'RATE_LIMIT_REQUESTS', 10)
@@ -49,6 +48,7 @@ def rate_limit(limit=None, window=None):
             cache_key = f'rate_limit_public_request_{ip}'
             count = cache.get(cache_key, 0)
             if count >= _limit:
+                logger.warning(f"Превышен лимит запросов для IP {ip} ({count}/{_limit})")
                 return HttpResponseForbidden(
                     "Слишком много заявок. Попробуйте позже. / Too many requests. Please try later."
                 )
@@ -60,17 +60,67 @@ def rate_limit(limit=None, window=None):
 
 def send_telegram_notification(message):
     """Отправляет сообщение в Telegram."""
-    token = settings.TELEGRAM_BOT_TOKEN
-    chat_id = settings.TELEGRAM_CHAT_ID
-    if not token or not chat_id:
-        return
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    try:
-        response = requests.post(url, json={
-            'chat_id': chat_id,
-            'text': message,
-            'parse_mode': 'HTML'
-        }, timeout=5)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"Telegram error: {e}")
+    NotificationService.send_telegram(message)
+
+
+# ========== Функции, перенесённые из views/utils ==========
+
+def parse_date(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, (int, float)):
+        from openpyxl.utils.datetime import from_excel
+        try:
+            return from_excel(value).date()
+        except Exception as e:
+            logger.debug(f"Ошибка парсинга Excel даты {value}: {e}")
+            pass
+    if isinstance(value, str):
+        for fmt in ('%d.%m.%Y', '%Y-%m-%d', '%d/%m/%Y'):
+            try:
+                return datetime.strptime(value, fmt).date()
+            except ValueError:
+                continue
+    return None
+
+
+def parse_datetime(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, (int, float)):
+        from openpyxl.utils.datetime import from_excel
+        try:
+            return from_excel(value)
+        except Exception as e:
+            logger.debug(f"Ошибка парсинга Excel datetime {value}: {e}")
+            pass
+    if isinstance(value, str):
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%d.%m.%Y %H:%M:%S', '%d.%m.%Y %H:%M', '%Y-%m-%d'):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+    return None
+
+
+def generate_new_captcha(lang='ru'):
+    operators = ['+', '-', '*']
+    op = random.choice(operators)
+    if op == '+':
+        a = random.randint(1, 20)
+        b = random.randint(1, 20)
+    elif op == '-':
+        a = random.randint(5, 20)
+        b = random.randint(1, a)
+    else:
+        a = random.randint(1, 10)
+        b = random.randint(1, 10)
+    return {
+        'captcha_num1': a,
+        'captcha_num2': b,
+        'captcha_operator': op,
+    }

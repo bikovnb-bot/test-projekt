@@ -40,19 +40,48 @@ class Profile(models.Model):
     def __str__(self):
         return f"{self.user.get_full_name() or self.user.username} - {self.get_role_display()}"
 
-# Объединённый сигнал для создания/сохранения профиля
+    def get_all_permissions(self):
+        return set(self.user.get_group_permissions())
+
+
+class UserLogin(models.Model):
+    """Модель для хранения истории входов пользователя."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='logins')
+    login_time = models.DateTimeField(auto_now_add=True, verbose_name='Время входа')
+    ip_address = models.GenericIPAddressField(verbose_name='IP-адрес', null=True, blank=True)
+    user_agent = models.TextField(verbose_name='User-Agent', blank=True)
+
+    class Meta:
+        verbose_name = 'Запись о входе'
+        verbose_name_plural = 'История входов'
+        ordering = ['-login_time']
+
+    def __str__(self):
+        return f"{self.user.username} вошёл {self.login_time.strftime('%d.%m.%Y %H:%M')}"
+
+
 @receiver(post_save, sender=User)
 def user_post_save(sender, instance, created, **kwargs):
     if created and not hasattr(instance, 'profile'):
         Profile.objects.create(user=instance, role=UserRole.WORKER)
-    else:
-        if hasattr(instance, 'profile'):
-            instance.profile.save()
 
 @receiver(user_logged_in)
 def update_profile_on_login(sender, user, request, **kwargs):
+    # Обновление профиля
     if hasattr(user, 'profile'):
         profile = user.profile
         profile.last_activity = timezone.now()
         profile.login_count += 1
         profile.save(update_fields=['last_activity', 'login_count'])
+
+    # Определение реального IP-адреса
+    ip = request.META.get('HTTP_X_FORWARDED_FOR')
+    if ip:
+        ip = ip.split(',')[0].strip()
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+
+    user_agent = request.META.get('HTTP_USER_AGENT', '')
+
+    # Создание записи о входе
+    UserLogin.objects.create(user=user, ip_address=ip, user_agent=user_agent)

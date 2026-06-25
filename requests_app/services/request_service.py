@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.contrib.auth.models import User
 from ..models import (
     ServiceRequest, RequestHistory, RequestFile, UsedMaterial,
-    Material, RequestAssignee
+    Material, RequestAssignee, MaterialTransaction
 )
 
 
@@ -15,14 +15,9 @@ class RequestService:
 
     @staticmethod
     def create_request(data, created_by, files=None):
-        """
-        Создаёт новую заявку с вложениями.
-        Использует переданную дату создания из data, если она есть.
-        """
         request = ServiceRequest(**data)
         request.created_by = created_by
         request.status = 'new'
-        # Если created_at не передан в data, ставим текущее
         if not request.created_at:
             request.created_at = timezone.now()
         request.save()
@@ -38,10 +33,6 @@ class RequestService:
 
     @staticmethod
     def update_request(request, data, files=None, delete_file_ids=None):
-        """
-        Обновляет заявку и управляет вложениями.
-        created_at обновляется только если передано в data.
-        """
         for attr, value in data.items():
             setattr(request, attr, value)
         request.save()
@@ -49,7 +40,8 @@ class RequestService:
             for file_id in delete_file_ids:
                 try:
                     file_obj = RequestFile.objects.get(id=file_id, request=request)
-                    file_obj.file.delete()
+                    if file_obj.file:
+                        file_obj.file.delete()
                     file_obj.delete()
                 except RequestFile.DoesNotExist:
                     pass
@@ -65,7 +57,6 @@ class RequestService:
 
     @staticmethod
     def assign_executor(request, assigned_to_id, user):
-        """Назначает исполнителя заявке."""
         if not assigned_to_id:
             return False, 'Выберите исполнителя'
         try:
@@ -85,7 +76,6 @@ class RequestService:
 
     @staticmethod
     def mark_completed(request, user, time_spent=None):
-        """Отмечает заявку как выполненную."""
         if request.status != 'in_progress':
             return False, 'Заявка не в работе'
         request.status = 'completed'
@@ -102,7 +92,6 @@ class RequestService:
 
     @staticmethod
     def suspend_request(request, user, reason):
-        """Приостанавливает заявку с указанием причины."""
         if not reason:
             return False, 'Укажите причину приостановки'
         request.status = 'suspended'
@@ -117,7 +106,6 @@ class RequestService:
 
     @staticmethod
     def resume_request(request, user):
-        """Возобновляет приостановленную или закрытую заявку (для администратора)."""
         request.status = 'in_progress'
         request.save()
         RequestHistory.objects.create(
@@ -129,10 +117,9 @@ class RequestService:
 
     @staticmethod
     def close_request(request, user, materials_data):
-        """
-        Закрывает заявку, списывает материалы со склада и создаёт записи UsedMaterial.
-        materials_data: список словарей с ключами material_id, quantity, unit, price_per_unit.
-        """
+        if request.status != 'completed':
+            return False, 'Заявка должна быть в статусе "Выполнена" для закрытия.'
+
         with transaction.atomic():
             materials_used = False
             for item in materials_data:
@@ -167,6 +154,14 @@ class RequestService:
                 )
                 material.quantity_in_stock -= qty
                 material.save()
+                # Аудит
+                MaterialTransaction.objects.create(
+                    material=material,
+                    request=request,
+                    quantity=qty,
+                    transaction_type='out',
+                    comment=f'Списание при закрытии заявки {request.request_number}'
+                )
                 materials_used = True
             request.status = 'closed'
             request.save()
@@ -179,7 +174,6 @@ class RequestService:
 
     @staticmethod
     def add_assignee(request, user, assignee_id):
-        """Добавляет дополнительного исполнителя."""
         try:
             assignee = User.objects.get(pk=assignee_id)
         except User.DoesNotExist:
@@ -196,7 +190,6 @@ class RequestService:
 
     @staticmethod
     def remove_assignee(request, user, assignee_id):
-        """Удаляет дополнительного исполнителя."""
         try:
             assignee = RequestAssignee.objects.get(request=request, user_id=assignee_id)
         except RequestAssignee.DoesNotExist:
@@ -212,7 +205,6 @@ class RequestService:
 
     @staticmethod
     def delete_request(request, user):
-        """Удаляет заявку с записью в истории."""
         RequestHistory.objects.create(
             request=request,
             user=user,

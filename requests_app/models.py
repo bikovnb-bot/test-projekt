@@ -8,6 +8,15 @@ from django.core.exceptions import ValidationError
 from buildings.models import Building, BuildingSection
 
 
+class RequestNumberSequence(models.Model):
+    """Счётчик для атомарной генерации номеров заявок."""
+    last_number = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Счётчик номеров заявок"
+        verbose_name_plural = "Счётчики номеров заявок"
+
+
 class RequestType(models.Model):
     name = models.CharField(max_length=50, unique=True, verbose_name="Название типа")
     icon = models.CharField(max_length=20, blank=True, verbose_name="Иконка (emoji или класс)")
@@ -56,13 +65,12 @@ class ServiceRequest(models.Model):
     planned_date = models.DateField(null=True, blank=True, verbose_name="Плановая дата выполнения")
     completed_date = models.DateTimeField(null=True, blank=True, verbose_name="Дата выполнения")
     comment = models.TextField(blank=True, verbose_name="Комментарий")
-    created_at = models.DateTimeField(verbose_name="Создана", editable=True, default=timezone.now)  # изменено
+    created_at = models.DateTimeField(verbose_name="Создана", editable=True, default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлена")
     track_time = models.BooleanField(default=False, verbose_name="Учитывать время выполнения")
     time_spent = models.PositiveIntegerField(null=True, blank=True, verbose_name="Затраченное время (минуты)")
     suspension_reason = models.TextField(blank=True, null=True, verbose_name="Причина приостановки")
 
-    # Поля для публичных заявок (без авторизации)
     contact_name = models.CharField(max_length=200, blank=True, null=True, verbose_name="Контактное лицо")
     contact_phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Телефон")
     ip_address = models.GenericIPAddressField(blank=True, null=True, verbose_name="IP адрес")
@@ -71,21 +79,39 @@ class ServiceRequest(models.Model):
         ordering = ['-created_at']
         verbose_name = "Заявка"
         verbose_name_plural = "Заявки"
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['priority']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['planned_date']),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.request_number:
-            last = ServiceRequest.objects.order_by('-id').first()
-            new_id = (last.id + 1) if last else 1
-            self.request_number = f"ЗЯ-{new_id:06d}"
+            from django.db import transaction
+            with transaction.atomic():
+                seq = RequestNumberSequence.objects.select_for_update().first()
+                if seq is None:
+                    seq = RequestNumberSequence.objects.create(last_number=0)
+                seq.last_number += 1
+                seq.save()
+                self.request_number = f"ЗЯ-{seq.last_number:06d}"
         super().save(*args, **kwargs)
 
     def return_materials_to_stock(self):
-        from .models import Material
+        from .models import Material, MaterialTransaction
         for used in self.used_materials.all():
             material = Material.objects.filter(name=used.name).first()
             if material:
                 material.quantity_in_stock += used.quantity
                 material.save()
+                MaterialTransaction.objects.create(
+                    material=material,
+                    request=self,
+                    quantity=used.quantity,
+                    transaction_type='return',
+                    comment=f'Возврат при изменении статуса с closed на другой'
+                )
         self.used_materials.all().delete()
 
     def get_creator_display(self):
@@ -116,16 +142,16 @@ class RequestAssignee(models.Model):
 
 class RequestFile(models.Model):
     request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE, related_name='files', verbose_name="Файлы")
-    file = models.FileField(upload_to='request_files/%Y/%m/%d/', verbose_name="Файл")
+    file = models.FileField(upload_to='request_files/%Y/%m/%d/', null=True, blank=True, verbose_name="Файл")
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Кто загрузил")
     uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата загрузки")
     description = models.CharField(max_length=255, blank=True, verbose_name="Описание")
 
     def get_file_name(self):
-        return self.file.name.split('/')[-1]
+        return self.file.name.split('/')[-1] if self.file else ''
 
     def __str__(self):
-        return self.get_file_name()
+        return self.get_file_name() or 'Файл без имени'
 
 
 class Material(models.Model):
@@ -133,9 +159,14 @@ class Material(models.Model):
     unit = models.CharField(max_length=20, verbose_name="Единица измерения")
     default_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Цена за единицу")
     quantity_in_stock = models.DecimalField(max_digits=12, decimal_places=3, default=0, verbose_name="Количество на складе")
+    min_stock = models.DecimalField(max_digits=12, decimal_places=3, default=0, verbose_name="Минимальный остаток")
 
     def __str__(self):
         return f"{self.name} ({self.unit})"
+
+    def is_low_stock(self):
+        """Проверяет, не ниже ли остаток минимального порога."""
+        return self.quantity_in_stock <= self.min_stock
 
     class Meta:
         verbose_name = "Материал"
@@ -201,3 +232,26 @@ class RequestSettings(models.Model):
 
     def __str__(self):
         return "Настройки заявок"
+
+
+class MaterialTransaction(models.Model):
+    """Аудит движения материалов."""
+    TRANSACTION_TYPES = (
+        ('in', 'Поступление'),
+        ('out', 'Списание'),
+        ('return', 'Возврат'),
+    )
+    material = models.ForeignKey(Material, on_delete=models.CASCADE, related_name='transactions')
+    request = models.ForeignKey(ServiceRequest, on_delete=models.SET_NULL, null=True, blank=True)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPES)
+    comment = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Транзакция материала'
+        verbose_name_plural = 'Транзакции материалов'
+
+    def __str__(self):
+        return f'{self.material.name} {self.get_transaction_type_display()} {self.quantity}'

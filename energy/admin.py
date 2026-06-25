@@ -77,10 +77,10 @@ class TariffComponentAdmin(admin.ModelAdmin):
 
 @admin.register(Meter)
 class MeterAdmin(admin.ModelAdmin):
-    list_display = ('serial_number', 'resource_type', 'is_multi_tariff', 'location', 'is_active', 'last_reading_date', 'last_reading_value')
-    list_filter = ('resource_type', 'is_multi_tariff', 'is_active')
+    list_display = ('serial_number', 'resource_type', 'is_multi_tariff', 'location', 'is_active', 'is_technical', 'last_reading_date', 'last_reading_value')
+    list_filter = ('resource_type', 'is_multi_tariff', 'is_active', 'is_technical')
     search_fields = ('serial_number', 'location')
-    list_editable = ('is_active',)
+    list_editable = ('is_active', 'is_technical')
     list_per_page = 25
     fieldsets = (
         ('Основная информация', {
@@ -94,7 +94,7 @@ class MeterAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
         ('Статус', {
-            'fields': ('is_active',)
+            'fields': ('is_active', 'is_technical')
         }),
     )
     inlines = [InitialZoneReadingInline, ReadingInline]

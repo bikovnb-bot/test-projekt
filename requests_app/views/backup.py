@@ -16,7 +16,7 @@ from buildings.models import Building, BuildingSection
 from users.models import UserRole
 from ..models import ServiceRequest, UsedMaterial, RequestType, RequestFile, RequestAssignee, RequestHistory
 from .decorators import manager_required
-from .utils import parse_date, parse_datetime
+from ..utils import parse_date, parse_datetime
 
 logger = logging.getLogger(__name__)
 

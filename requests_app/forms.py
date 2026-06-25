@@ -1,6 +1,7 @@
 # requests_app/forms.py
 
 import random
+import re
 from django import forms
 from django.contrib.auth.models import User
 from django.forms import inlineformset_factory
@@ -186,18 +187,20 @@ class ImportMaterialsForm(forms.Form):
 class MaterialForm(forms.ModelForm):
     class Meta:
         model = Material
-        fields = ['name', 'unit', 'default_price', 'quantity_in_stock']
+        fields = ['name', 'unit', 'default_price', 'quantity_in_stock', 'min_stock']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'unit': forms.TextInput(attrs={'class': 'form-control'}),
             'default_price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'quantity_in_stock': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'min_stock': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
         }
         labels = {
             'name': 'Наименование',
             'unit': 'Единица измерения',
             'default_price': 'Цена за единицу (₽)',
             'quantity_in_stock': 'Количество на складе',
+            'min_stock': 'Минимальный остаток',
         }
 
 
@@ -394,6 +397,14 @@ class PublicRequestForm(forms.ModelForm):
             raise forms.ValidationError("Spam detected.")
         return ''
 
+    def clean_contact_phone(self):
+        phone = self.cleaned_data.get('contact_phone')
+        if phone:
+            digits = re.sub(r'\D', '', phone)
+            if len(digits) < 10:
+                raise forms.ValidationError('Введите корректный номер телефона (не менее 10 цифр).')
+        return phone
+
     def _transliterate(self, text):
         translit_map = {
             'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
@@ -411,3 +422,32 @@ class PublicRequestForm(forms.ModelForm):
             else:
                 result += ch
         return result.capitalize()
+
+
+# Форма для ручной корректировки остатка материала
+class MaterialAdjustForm(forms.Form):
+    TRANSACTION_CHOICES = (
+        ('in', 'Приход'),
+        ('out', 'Списание'),
+    )
+    transaction_type = forms.ChoiceField(choices=TRANSACTION_CHOICES, label="Тип операции")
+    quantity = forms.DecimalField(max_digits=12, decimal_places=3, label="Количество", min_value=0.001)
+    comment = forms.CharField(max_length=255, required=False, label="Комментарий", widget=forms.TextInput(attrs={'class': 'form-control'}))
+
+class MaterialUsageReportForm(forms.Form):
+    date_from = forms.DateField(
+        required=True,
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        label="Дата от"
+    )
+    date_to = forms.DateField(
+        required=True,
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        label="Дата до"
+    )
+    material = forms.ModelChoiceField(
+        queryset=Material.objects.all().order_by('name'),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label="Материал (опционально)"
+    )

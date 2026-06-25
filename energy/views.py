@@ -1,12 +1,5 @@
 # energy/views.py
-# Полный файл с комментариями
-# Содержит все представления для работы с приборами учёта и показаниями:
-#   - CRUD счётчиков
-#   - Добавление, редактирование, удаление показаний (с поддержкой файлов)
-#   - Отчёты по потреблению, аномалиям
-#   - Импорт/экспорт показаний (Excel)
-#   - Дашборд энергетики (настраиваемые виджеты)
-#   - Функция get_dashboard_context для использования в общем дашборде
+# Полный файл с исправлениями критических ошибок, поддержкой is_technical и историей начальных показаний
 
 import json
 from decimal import Decimal
@@ -14,6 +7,7 @@ from datetime import datetime, timedelta, date
 from calendar import monthrange
 from collections import defaultdict
 from dateutil.relativedelta import relativedelta
+from dateutil import parser as date_parser
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -31,9 +25,12 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 
-from .models import Meter, Reading, ZoneReading, TariffComponent, ResourceType, MeterDocument
+from .models import (
+    Meter, Reading, ZoneReading, TariffComponent, ResourceType, MeterDocument,
+    InitialZoneReading, InitialValueHistory, InitialZoneValueHistory
+)
 from .forms import ReadingForm, MeterForm, ReadingEditForm, MeterDocumentForm, ImportReadingsForm
 from .utils import (
     can_view_all_meters, can_edit_all_meters, can_assign_owner,
@@ -45,31 +42,20 @@ from .utils import (
 from users.decorators import has_contract_access, has_contract_edit_access
 from users.models import UserRole
 from .forms import ResetInitialReadingsForm
-from .models import InitialZoneReading
 
 
 # ------------------------------------------------------------
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПРОВЕРКИ ПРАВ В ENERGY
 # ------------------------------------------------------------
 def _check_energy_view_access(user):
-    """Проверка права просмотра раздела энергетики (на основе ролей)."""
     return has_contract_access(user)
 
 def _check_energy_edit_access(user):
-    """Проверка права редактирования раздела энергетики."""
     return has_contract_edit_access(user)
 
 
-# ==================== ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ КОНТЕКСТА ДАШБОРДА (ДЛЯ ПЕРЕИСПОЛЬЗОВАНИЯ) ====================
-
+# ==================== ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ КОНТЕКСТА ДАШБОРДА ====================
 def get_dashboard_context(year=None, month=None, resource_type_id='all'):
-    """
-    Возвращает контекст для дашборда энергетики за указанный месяц.
-    Параметры:
-        year  - год (по умолчанию текущий)
-        month - месяц (по умолчанию текущий)
-        resource_type_id - ID типа ресурса или 'all' (по умолчанию 'all')
-    """
     from django.db.models import Sum
     from calendar import monthrange
     from collections import defaultdict
@@ -85,13 +71,11 @@ def get_dashboard_context(year=None, month=None, resource_type_id='all'):
     prev_start_date = date(year-1, month, 1)
     prev_end_date = prev_start_date.replace(day=monthrange(year-1, month)[1])
 
-    # Базовый queryset активных счётчиков
-    meters = Meter.objects.filter(is_active=True)
-    # Фильтрация по типу ресурса, если выбран конкретный
+    # Базовый queryset активных счётчиков (исключаем технические)
+    meters = Meter.objects.filter(is_active=True, is_technical=False)
     if resource_type_id != 'all':
         meters = meters.filter(resource_type_id=resource_type_id)
 
-    # --- KPI: общее потребление за месяц, количество счётчиков, аномалии ---
     total_current = Decimal('0')
     meter_count = meters.count()
     anomaly_count = 0
@@ -112,7 +96,6 @@ def get_dashboard_context(year=None, month=None, resource_type_id='all'):
                     anomaly_count += 1
     unit = meters.first().resource_type.unit if meters.exists() else "ед."
 
-    # --- Динамика потребления за месяц (по дням) – текущий и прошлый год ---
     monthly_current = defaultdict(float)
     monthly_prev = defaultdict(float)
     for meter in meters:
@@ -127,7 +110,6 @@ def get_dashboard_context(year=None, month=None, resource_type_id='all'):
     current_data = [float(monthly_current.get(f"{year}-{month:02d}-{d:02d}", 0)) for d in range(1, days_in_month + 1)]
     prev_data = [float(monthly_prev.get(f"{year-1}-{month:02d}-{d:02d}", 0)) for d in range(1, days_in_month + 1)]
 
-    # --- Распределение по типам ресурсов (круговая диаграмма) ---
     consumption_by_type = defaultdict(float)
     for meter in meters:
         readings = meter.reading_set.filter(date__gte=start_date, date__lte=end_date)
@@ -141,7 +123,6 @@ def get_dashboard_context(year=None, month=None, resource_type_id='all'):
     resource_labels = list(consumption_by_type.keys())
     resource_data = list(consumption_by_type.values())
 
-    # --- Топ-5 счётчиков по потреблению ---
     top_meters = []
     for meter in meters:
         readings = meter.reading_set.filter(date__gte=start_date, date__lte=end_date)
@@ -155,7 +136,6 @@ def get_dashboard_context(year=None, month=None, resource_type_id='all'):
     top_meters.sort(key=lambda x: x['consumption'], reverse=True)
     top_meters = top_meters[:5]
 
-    # --- Аномалии (последние 10) ---
     anomalies = []
     for meter in meters:
         avg = get_avg_consumption(meter)
@@ -175,7 +155,6 @@ def get_dashboard_context(year=None, month=None, resource_type_id='all'):
     anomalies.sort(key=lambda x: x['date'], reverse=True)
     anomalies = anomalies[:10]
 
-    # --- Список всех типов ресурсов для выпадающего списка ---
     resource_types = ResourceType.objects.all()
 
     month_names_ru = {
@@ -199,8 +178,8 @@ def get_dashboard_context(year=None, month=None, resource_type_id='all'):
         'year': year,
         'month': month,
         'month_name': month_names_ru[month],
-        'resource_types': resource_types,           # все типы для выбора
-        'selected_resource_type': resource_type_id, # выбранный тип
+        'resource_types': resource_types,
+        'selected_resource_type': resource_type_id,
     }
     return context
 
@@ -210,10 +189,6 @@ def get_dashboard_context(year=None, month=None, resource_type_id='all'):
 # ------------------------------------------------------------
 @login_required
 def add_reading(request):
-    """
-    Добавление нового показания через обычную HTML-форму.
-    Поддерживает загрузку документа (фото, скан, PDF).
-    """
     if not _check_energy_view_access(request.user):
         messages.error(request, "У вас нет доступа к этому разделу.")
         return redirect('energy:meter_list')
@@ -254,7 +229,6 @@ def add_reading(request):
                     comp_id = int(key.split('_')[1])
                     comp = TariffComponent.objects.get(pk=comp_id)
                     ZoneReading.objects.create(reading=reading, tariff_component=comp, value=Decimal(val))
-                # Сохранение документа
                 if 'document' in request.FILES:
                     reading.document = request.FILES['document']
                     reading.save(update_fields=['document'])
@@ -299,10 +273,6 @@ def add_reading(request):
 
 @login_required
 def add_reading_modal(request):
-    """
-    AJAX-обработчик для добавления показаний через модальное окно.
-    Возвращает JSON или HTML (для GET-запроса). Поддерживает загрузку документа.
-    """
     if not _check_energy_view_access(request.user):
         return JsonResponse({'status': 'error', 'message': 'Нет доступа'}, status=403)
 
@@ -348,10 +318,6 @@ def add_reading_modal(request):
 
 @login_required
 def edit_reading(request, pk):
-    """
-    Редактирование показания. Позволяет изменить дату, значения,
-    а также загрузить новый документ или удалить существующий.
-    """
     if not _check_energy_edit_access(request.user):
         messages.error(request, "У вас нет прав на редактирование показаний.")
         return redirect('energy:meter_list')
@@ -365,17 +331,6 @@ def edit_reading(request, pk):
         form = ReadingEditForm(request.user, reading, request.POST, request.FILES)
         if form.is_valid():
             form.save()
-            if 'document' in request.FILES and not reading.document:
-                reading.document = request.FILES['document']
-                reading.save(update_fields=['document'])
-            elif request.POST.get('document_clear'):
-                if reading.document:
-                    try:
-                        reading.document.delete(save=False)
-                    except Exception:
-                        pass
-                reading.document = None
-                reading.save(update_fields=['document'])
 
             avg = get_avg_consumption(reading.meter)
             consumption = reading.total_consumption()
@@ -394,9 +349,6 @@ def edit_reading(request, pk):
 
 @login_required
 def delete_reading(request, pk):
-    """
-    Удаление показания. При удалении файл документа также удаляется с диска.
-    """
     if not _check_energy_edit_access(request.user):
         messages.error(request, "У вас нет прав на удаление показаний.")
         return redirect('energy:meter_list')
@@ -424,21 +376,15 @@ def delete_reading(request, pk):
 
 
 # ------------------------------------------------------------
-# ЗАЩИЩЁННЫЙ ПРОСМОТР ФАЙЛА, ПРИВЯЗАННОГО К ПОКАЗАНИЮ
+# ЗАЩИЩЁННЫЙ ПРОСМОТР ФАЙЛА
 # ------------------------------------------------------------
 @login_required
 def reading_document_view(request, reading_id):
-    """
-    Представление для защищённого доступа к файлу, прикреплённому к показанию.
-    Проверяет права пользователя на просмотр счётчика.
-    """
     reading = get_object_or_404(Reading, pk=reading_id)
     if not can_view_meter(request.user, reading.meter):
         raise PermissionDenied('У вас нет доступа к этому файлу')
-
     if not reading.document or not reading.document.name:
         raise Http404('Файл не найден')
-
     return redirect(reading.document.url)
 
 
@@ -447,7 +393,6 @@ def reading_document_view(request, reading_id):
 # ------------------------------------------------------------
 @login_required
 def add_meter(request):
-    """Добавление нового счётчика (доступно только с правом редактирования)."""
     if not _check_energy_edit_access(request.user):
         messages.error(request, "У вас нет прав на добавление счётчиков.")
         return redirect('energy:meter_list')
@@ -467,31 +412,106 @@ def add_meter(request):
 
 
 class MeterListView(LoginRequiredMixin, ListView):
-    """Список всех счётчиков (с проверкой прав)."""
     model = Meter
     template_name = 'energy/meter_list.html'
     context_object_name = 'meters'
-
-    def dispatch(self, request, *args, **kwargs):
-        if not _check_energy_view_access(request.user):
-            messages.error(request, "У вас нет доступа к списку счётчиков.")
-            return redirect('home')
-        return super().dispatch(request, *args, **kwargs)
+    paginate_by = 12
 
     def get_queryset(self):
-        if can_view_all_meters(self.request.user):
-            return Meter.objects.all()
-        return Meter.objects.all()
+        queryset = Meter.objects.all()
+
+        # --- Быстрые фильтры (чипсы) ---
+        # Фильтр по типу (технический / основной)
+        meter_type = self.request.GET.get('meter_type')
+        if meter_type == 'technical':
+            queryset = queryset.filter(is_technical=True)
+        elif meter_type == 'main':
+            queryset = queryset.filter(is_technical=False)
+
+        # Фильтр по активности
+        status = self.request.GET.get('status')
+        if status == 'active':
+            queryset = queryset.filter(is_active=True)
+        elif status == 'inactive':
+            queryset = queryset.filter(is_active=False)
+
+        # Фильтр по типу ресурса (чипсы)
+        resource_type_chip = self.request.GET.get('resource_type_chip')
+        if resource_type_chip:
+            queryset = queryset.filter(resource_type_id=resource_type_chip)
+
+        # --- Поиск ---
+        search = self.request.GET.get('search')
+        if search:
+            queryset = queryset.filter(
+                models.Q(serial_number__icontains=search) |
+                models.Q(location__icontains=search) |
+                models.Q(resource_type__name__icontains=search)
+            )
+
+        # --- Расширенный фильтр ---
+        # Тип ресурса (выпадающий список)
+        resource_type = self.request.GET.get('resource_type')
+        if resource_type:
+            queryset = queryset.filter(resource_type_id=resource_type)
+
+        # Технический учёт (выпадающий список)
+        is_technical = self.request.GET.get('is_technical')
+        if is_technical == '1':
+            queryset = queryset.filter(is_technical=True)
+        elif is_technical == '0':
+            queryset = queryset.filter(is_technical=False)
+
+        # Активность (выпадающий список)
+        is_active = self.request.GET.get('is_active')
+        if is_active == '1':
+            queryset = queryset.filter(is_active=True)
+        elif is_active == '0':
+            queryset = queryset.filter(is_active=False)
+
+        # Диапазон суммы потребления (за всё время) – можно использовать агрегацию, но для простоты оставим пока заглушку
+        # Здесь можно добавить фильтрацию по total_consumption через аннотацию, но это может быть сложно.
+        # Пока оставим как есть, но поля в форме добавим.
+
+        # Диапазон дат последнего показания – можно через subquery, но для простоты пока пропустим.
+
+        return queryset.order_by('serial_number')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['can_edit'] = can_edit_all_meters(self.request.user)
         context['can_delete'] = can_delete_meter(self.request.user, None)
+
+        # Статистика
+        all_meters = Meter.objects.all()
+        context['total_count'] = all_meters.count()
+        context['active_count'] = all_meters.filter(is_active=True).count()
+        context['inactive_count'] = all_meters.filter(is_active=False).count()
+        context['technical_count'] = all_meters.filter(is_technical=True).count()
+        context['main_count'] = all_meters.filter(is_technical=False).count()
+
+        # Типы ресурсов для фильтров
+        context['resource_types'] = ResourceType.objects.all()
+
+        # Текущие параметры для сохранения в форме
+        context['filter_data'] = {
+            'search': self.request.GET.get('search', ''),
+            'resource_type': self.request.GET.get('resource_type', ''),
+            'is_technical': self.request.GET.get('is_technical', ''),
+            'is_active': self.request.GET.get('is_active', ''),
+            'meter_type': self.request.GET.get('meter_type', ''),
+            'status': self.request.GET.get('status', ''),
+            'resource_type_chip': self.request.GET.get('resource_type_chip', ''),
+        }
+
+        # Для чипсов – список уникальных типов ресурсов, используемых в приборах
+        used_resource_types = ResourceType.objects.filter(meter__isnull=False).distinct()
+        context['used_resource_types'] = used_resource_types
+
         return context
 
 
 class MeterDetailView(LoginRequiredMixin, DetailView):
-    """Детальная страница счётчика с графиками и документами."""
     model = Meter
     template_name = 'energy/meter_detail.html'
     context_object_name = 'meter'
@@ -576,7 +596,6 @@ class MeterDetailView(LoginRequiredMixin, DetailView):
             context['consumptions'] = consumptions
             context['is_multi_tariff'] = False
 
-        # Последние 5 показаний с аномалиями
         last_readings = meter.reading_set.order_by('-date')[:5]
         last_readings_with_anomaly = []
         if last_readings:
@@ -587,7 +606,6 @@ class MeterDetailView(LoginRequiredMixin, DetailView):
                 last_readings_with_anomaly.append({'reading': reading, 'anomaly': anomaly})
         context['last_readings_with_anomaly'] = last_readings_with_anomaly
 
-        # Документы счётчика (пагинация)
         documents = meter.documents.all().order_by('-uploaded_at')
         paginator = Paginator(documents, 15)
         page = self.request.GET.get('doc_page')
@@ -604,7 +622,6 @@ class MeterDetailView(LoginRequiredMixin, DetailView):
 
 
 class MeterUpdateView(LoginRequiredMixin, UpdateView):
-    """Редактирование счётчика."""
     model = Meter
     form_class = MeterForm
     template_name = 'energy/meter_edit.html'
@@ -634,7 +651,6 @@ class MeterUpdateView(LoginRequiredMixin, UpdateView):
 
 
 class MeterDeleteView(LoginRequiredMixin, DeleteView):
-    """Удаление счётчика (только для администратора)."""
     model = Meter
     template_name = 'energy/meter_confirm_delete.html'
     success_url = reverse_lazy('energy:meter_list')
@@ -659,11 +675,10 @@ class MeterDeleteView(LoginRequiredMixin, DeleteView):
 
 
 # ------------------------------------------------------------
-# ДОКУМЕНТЫ СЧЁТЧИКА (НЕ ПОКАЗАНИЯ)
+# ДОКУМЕНТЫ СЧЁТЧИКА
 # ------------------------------------------------------------
 @login_required
 def upload_document(request, meter_pk):
-    """Загрузка документа, прикреплённого к счётчику."""
     if not _check_energy_edit_access(request.user):
         messages.error(request, "У вас нет прав на загрузку документов.")
         return redirect('energy:meter_list')
@@ -688,7 +703,6 @@ def upload_document(request, meter_pk):
 
 @login_required
 def delete_document(request, pk):
-    """Удаление документа счётчика."""
     if not _check_energy_edit_access(request.user):
         messages.error(request, "У вас нет прав на удаление документов.")
         return redirect('energy:meter_list')
@@ -710,22 +724,28 @@ def delete_document(request, pk):
 # ------------------------------------------------------------
 @login_required
 def consumption_report(request):
-    """Отчёт по потреблению за выбранный период (месяц, квартал, год) с фильтром по типу ресурса."""
     if not _check_energy_view_access(request.user):
         messages.error(request, "У вас нет доступа к отчёту.")
         return redirect('home')
+
     period_type = request.GET.get('period', 'month')
     year = int(request.GET.get('year', datetime.now().year))
     month = int(request.GET.get('month', datetime.now().month))
     quarter = int(request.GET.get('quarter', (datetime.now().month - 1) // 3 + 1))
     group_id = request.GET.get('group', 'all')
-    month_names_ru = {1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель', 5: 'Май', 6: 'Июнь', 7: 'Июль', 8: 'Август', 9: 'Сентябрь', 10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь'}
+    chart_type = request.GET.get('chart_type', 'bar')
+    meter_type = request.GET.get('meter_type', 'main')  # 'main', 'technical', 'all'
+
+    month_names_ru = {1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель', 5: 'Май', 6: 'Июнь',
+                      7: 'Июль', 8: 'Август', 9: 'Сентябрь', 10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь'}
+
     if period_type == 'month':
         start_date = date(year, month, 1)
         end_date = start_date.replace(day=monthrange(year, month)[1])
         period_label = f"{month_names_ru[month]} {year}"
         prev_start_date = date(year-1, month, 1)
         prev_end_date = prev_start_date.replace(day=monthrange(year-1, month)[1])
+        date_range = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
     elif period_type == 'quarter':
         start_month = (quarter - 1) * 3 + 1
         start_date = date(year, start_month, 1)
@@ -733,17 +753,27 @@ def consumption_report(request):
         period_label = f"{quarter} квартал {year}"
         prev_start_date = date(year-1, start_month, 1)
         prev_end_date = prev_start_date + relativedelta(months=3) - timedelta(days=1)
-    else:
+        date_range = [date(year, m, 1) for m in range(start_month, start_month+3)]
+    else:  # year
         start_date = date(year, 1, 1)
         end_date = date(year, 12, 31)
         period_label = str(year)
         prev_start_date = date(year-1, 1, 1)
         prev_end_date = date(year-1, 12, 31)
+        date_range = [date(year, m, 1) for m in range(1, 13)]
 
+    # Фильтр по типу приборов
     meters = Meter.objects.filter(is_active=True)
+    if meter_type == 'main':
+        meters = meters.filter(is_technical=False)
+    elif meter_type == 'technical':
+        meters = meters.filter(is_technical=True)
+    # если 'all' – оставляем все
+
     if group_id != 'all':
         meters = meters.filter(resource_type_id=group_id)
 
+    # ---- Данные для таблицы ----
     table_data = []
     total_current = Decimal('0')
     total_prev = Decimal('0')
@@ -773,8 +803,71 @@ def consumption_report(request):
             changetype = 'increase' if current > 0 else 'stable'
         total_current += current
         total_prev += prev
-        table_data.append({'meter': meter, 'consumption': current, 'prev_consumption': prev, 'change_percent': change, 'changetype': changetype})
+        table_data.append({
+            'meter': meter,
+            'consumption': current,
+            'prev_consumption': prev,
+            'change_percent': change,
+            'changetype': changetype
+        })
     table_data.sort(key=lambda x: x['consumption'], reverse=True)
+
+    # ---- Данные для графика динамики ----
+    chart_labels = []
+    chart_current = []
+    chart_prev = []
+    if period_type == 'month':
+        for d in date_range:
+            chart_labels.append(d.strftime('%d.%m'))
+            day_readings = Reading.objects.filter(
+                meter__in=meters,
+                date=d
+            )
+            total_day = sum(r.total_consumption() for r in day_readings)
+            chart_current.append(float(total_day))
+            prev_d = d.replace(year=d.year-1)
+            prev_day_readings = Reading.objects.filter(
+                meter__in=meters,
+                date=prev_d
+            )
+            total_prev_day = sum(r.total_consumption() for r in prev_day_readings)
+            chart_prev.append(float(total_prev_day))
+    else:
+        for d in date_range:
+            chart_labels.append(month_names_ru[d.month])
+            month_readings = Reading.objects.filter(
+                meter__in=meters,
+                date__year=d.year,
+                date__month=d.month
+            )
+            total_month = sum(r.total_consumption() for r in month_readings)
+            chart_current.append(float(total_month))
+            prev_d = d.replace(year=d.year-1)
+            prev_month_readings = Reading.objects.filter(
+                meter__in=meters,
+                date__year=prev_d.year,
+                date__month=prev_d.month
+            )
+            total_prev_month = sum(r.total_consumption() for r in prev_month_readings)
+            chart_prev.append(float(total_prev_month))
+
+    # ---- Данные для круговой диаграммы по типам ресурсов ----
+    consumption_by_type = defaultdict(float)
+    for meter in meters:
+        readings = meter.reading_set.filter(date__gte=start_date, date__lte=end_date)
+        if not readings:
+            continue
+        if meter.is_multi_tariff:
+            total = sum(r.total_consumption() for r in readings)
+        else:
+            total = readings.aggregate(total=Sum('consumption'))['total'] or Decimal('0')
+        consumption_by_type[meter.resource_type.name] += float(total)
+    pie_labels = list(consumption_by_type.keys())
+    pie_data = list(consumption_by_type.values())
+
+    # ---- Общие итоги ----
+    units = {item['meter'].resource_type.unit for item in table_data}
+    total_unit = units.pop() if len(units) == 1 else "ед."
 
     if total_prev != 0:
         total_change = (total_current - total_prev) / total_prev * 100
@@ -783,29 +876,42 @@ def consumption_report(request):
         total_change = 100 if total_current > 0 else 0
         total_changetype = 'increase' if total_current > 0 else 'stable'
 
-    units = {item['meter'].resource_type.unit for item in table_data}
-    total_unit = units.pop() if len(units) == 1 else "ед."
     current_year = datetime.now().year
     years = range(current_year - 2, current_year + 1)
     resource_types = ResourceType.objects.all()
-    log_action(user=request.user, action='VIEW', model_name='Report', object_id='',
-               details=f"Просмотр отчёта по потреблению за {period_label}, фильтр: {group_id}", request=request)
+
     context = {
-        'table_data': table_data, 'total_current': total_current, 'total_prev': total_prev,
-        'total_change': total_change, 'total_changetype': total_changetype, 'total_unit': total_unit,
-        'period_type': period_type, 'period_label': period_label, 'selected_year': year,
-        'selected_month': month, 'selected_quarter': quarter, 'selected_group': group_id,
-        'years': years, 'months': [(1, 'Январь'), (2, 'Февраль'), (3, 'Март'), (4, 'Апрель'),
-                                   (5, 'Май'), (6, 'Июнь'), (7, 'Июль'), (8, 'Август'),
-                                   (9, 'Сентябрь'), (10, 'Октябрь'), (11, 'Ноябрь'), (12, 'Декабрь')],
-        'quarters': [1, 2, 3, 4], 'resource_types': resource_types,
+        'table_data': table_data,
+        'total_current': total_current,
+        'total_prev': total_prev,
+        'total_change': total_change,
+        'total_changetype': total_changetype,
+        'total_unit': total_unit,
+        'period_type': period_type,
+        'period_label': period_label,
+        'selected_year': year,
+        'selected_month': month,
+        'selected_quarter': quarter,
+        'selected_group': group_id,
+        'years': years,
+        'months': [(1, 'Январь'), (2, 'Февраль'), (3, 'Март'), (4, 'Апрель'),
+                   (5, 'Май'), (6, 'Июнь'), (7, 'Июль'), (8, 'Август'),
+                   (9, 'Сентябрь'), (10, 'Октябрь'), (11, 'Ноябрь'), (12, 'Декабрь')],
+        'quarters': [1, 2, 3, 4],
+        'resource_types': resource_types,
+        'chart_labels': chart_labels,
+        'chart_current': chart_current,
+        'chart_prev': chart_prev,
+        'chart_type': chart_type,
+        'pie_labels': pie_labels,
+        'pie_data': pie_data,
+        'meter_type': meter_type,
     }
     return render(request, 'energy/consumption_report.html', context)
 
 
 @login_required
 def export_consumption_report(request):
-    """Экспорт отчёта по потреблению в Excel."""
     if not _check_energy_view_access(request.user):
         messages.error(request, "У вас нет доступа к экспорту отчёта.")
         return redirect('home')
@@ -835,7 +941,7 @@ def export_consumption_report(request):
         prev_start_date = date(year-1, 1, 1)
         prev_end_date = date(year-1, 12, 31)
 
-    meters = Meter.objects.filter(is_active=True)
+    meters = Meter.objects.filter(is_active=True, is_technical=False)
     if group_id != 'all':
         meters = meters.filter(resource_type_id=group_id)
 
@@ -910,7 +1016,6 @@ def export_consumption_report(request):
 
 @login_required
 def anomaly_report(request):
-    """Отчёт по аномалиям потребления с фильтрацией по типу ресурса, датам и порогу."""
     if not _check_energy_view_access(request.user):
         messages.error(request, "У вас нет доступа к отчёту по аномалиям.")
         return redirect('home')
@@ -918,7 +1023,7 @@ def anomaly_report(request):
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
     threshold = float(request.GET.get('threshold', 2.0))
-    meters = Meter.objects.filter(is_active=True)
+    meters = Meter.objects.filter(is_active=True, is_technical=False)
     if resource_type_id and resource_type_id != 'all':
         meters = meters.filter(resource_type_id=resource_type_id)
     anomalies = []
@@ -948,7 +1053,6 @@ def anomaly_report(request):
 # ------------------------------------------------------------
 @login_required
 def import_readings(request):
-    """Импорт показаний из Excel-файла (поддерживается dry-run)."""
     if not _check_energy_edit_access(request.user):
         messages.error(request, "У вас нет прав на импорт показаний.")
         return redirect('energy:meter_list')
@@ -990,129 +1094,132 @@ def import_readings(request):
             created_count = 0
             updated_count = 0
             errors = []
+            affected_meters = set()
 
-            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                if not row or all(cell is None for cell in row):
-                    continue
-
-                meter_serial = row[meter_col-1] if meter_col and len(row) >= meter_col else None
-                date_str_val = row[date_col-1] if date_col and len(row) >= date_col else None
-
-                if not meter_serial or not date_str_val:
-                    errors.append(f"Строка {row_idx}: отсутствует серийный номер или дата")
-                    continue
-
-                try:
-                    meter = Meter.objects.get(serial_number=str(meter_serial))
-                except Meter.DoesNotExist:
-                    errors.append(f"Строка {row_idx}: счётчик с серийным номером '{meter_serial}' не найден")
-                    continue
-
-                try:
-                    if isinstance(date_str_val, datetime):
-                        reading_date = date_str_val.date()
-                    else:
-                        reading_date = datetime.strptime(str(date_str_val), '%Y-%m-%d').date()
-                except Exception:
-                    errors.append(f"Строка {row_idx}: неверный формат даты (ожидается YYYY-MM-DD)")
-                    continue
-
-                if reading_date > date.today():
-                    errors.append(f"Строка {row_idx}: дата {reading_date} не может быть в будущем")
-                    continue
-
-                if meter.is_multi_tariff:
-                    if not zone_columns:
-                        errors.append(f"Строка {row_idx}: счётчик многотарифный, но в файле нет колонок для зон")
+            with transaction.atomic():
+                for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                    if not row or all(cell is None for cell in row):
                         continue
 
-                    zone_values = {}
-                    valid = True
-                    for col_num, zone_name in zone_columns:
-                        val = row[col_num-1] if len(row) >= col_num else None
-                        if val is None:
-                            errors.append(f"Строка {row_idx}: отсутствует значение для зоны '{zone_name}'")
-                            valid = False
-                            break
-                        try:
-                            zone_values[zone_name] = Decimal(str(val))
-                        except Exception:
-                            errors.append(f"Строка {row_idx}: неверное числовое значение для зоны '{zone_name}'")
-                            valid = False
-                            break
-                    if not valid:
+                    meter_serial = row[meter_col-1] if meter_col and len(row) >= meter_col else None
+                    date_str_val = row[date_col-1] if date_col and len(row) >= date_col else None
+
+                    if not meter_serial or not date_str_val:
+                        errors.append(f"Строка {row_idx}: отсутствует серийный номер или дата")
                         continue
 
-                    components = {comp.name: comp for comp in TariffComponent.objects.filter(
-                        resource_type=meter.resource_type,
-                        is_multi_tariff_zone=True,
-                        valid_from__lte=reading_date
-                    ).exclude(valid_to__lt=reading_date)}
-
-                    missing_zones = set(zone_values.keys()) - set(components.keys())
-                    if missing_zones:
-                        errors.append(f"Строка {row_idx}: неизвестные зоны: {', '.join(missing_zones)}")
-                        continue
-
-                    if dry_run:
-                        created_count += 1
-                        continue
-
-                    reading, created = Reading.objects.update_or_create(
-                        meter=meter,
-                        date=reading_date,
-                        defaults={'value': None}
-                    )
-                    for zone_name, val in zone_values.items():
-                        comp = components[zone_name]
-                        ZoneReading.objects.update_or_create(
-                            reading=reading,
-                            tariff_component=comp,
-                            defaults={'value': val}
-                        )
-                    if not dry_run:
-                        meter.recalc_consumption()
-
-                    if created:
-                        created_count += 1
-                    else:
-                        updated_count += 1
-                    log_action(user=request.user, action='IMPORT', model_name='Reading', object_id=reading.pk,
-                               details=f"Импорт показаний для {meter.serial_number} от {reading_date}", request=request)
-
-                else:
-                    if not value_col:
-                        errors.append(f"Строка {row_idx}: для однотарифного счётчика нужна колонка 'value'")
-                        continue
-
-                    val = row[value_col-1] if len(row) >= value_col else None
-                    if val is None:
-                        errors.append(f"Строка {row_idx}: отсутствует значение показания")
-                        continue
                     try:
-                        value = Decimal(str(val))
+                        meter = Meter.objects.get(serial_number=str(meter_serial))
+                    except Meter.DoesNotExist:
+                        errors.append(f"Строка {row_idx}: счётчик с серийным номером '{meter_serial}' не найден")
+                        continue
+
+                    try:
+                        if isinstance(date_str_val, datetime):
+                            reading_date = date_str_val.date()
+                        else:
+                            reading_date = date_parser.parse(str(date_str_val)).date()
                     except Exception:
-                        errors.append(f"Строка {row_idx}: неверное числовое значение для показания")
+                        errors.append(f"Строка {row_idx}: неверный формат даты (ожидается YYYY-MM-DD или подобный)")
                         continue
 
-                    if dry_run:
-                        created_count += 1
+                    if reading_date > date.today():
+                        errors.append(f"Строка {row_idx}: дата {reading_date} не может быть в будущем")
                         continue
 
-                    reading, created = Reading.objects.update_or_create(
-                        meter=meter,
-                        date=reading_date,
-                        defaults={'value': value}
-                    )
-                    if not dry_run:
-                        meter.recalc_consumption()
+                    if meter.is_multi_tariff:
+                        if not zone_columns:
+                            errors.append(f"Строка {row_idx}: счётчик многотарифный, но в файле нет колонок для зон")
+                            continue
 
-                    if created:
-                        created_count += 1
+                        zone_values = {}
+                        valid = True
+                        for col_num, zone_name in zone_columns:
+                            val = row[col_num-1] if len(row) >= col_num else None
+                            if val is None:
+                                errors.append(f"Строка {row_idx}: отсутствует значение для зоны '{zone_name}'")
+                                valid = False
+                                break
+                            try:
+                                zone_values[zone_name] = Decimal(str(val))
+                            except Exception:
+                                errors.append(f"Строка {row_idx}: неверное числовое значение для зоны '{zone_name}'")
+                                valid = False
+                                break
+                        if not valid:
+                            continue
+
+                        components = {comp.name: comp for comp in TariffComponent.objects.filter(
+                            resource_type=meter.resource_type,
+                            is_multi_tariff_zone=True,
+                            valid_from__lte=reading_date
+                        ).exclude(valid_to__lt=reading_date)}
+
+                        missing_zones = set(zone_values.keys()) - set(components.keys())
+                        if missing_zones:
+                            errors.append(f"Строка {row_idx}: неизвестные зоны: {', '.join(missing_zones)}")
+                            continue
+
+                        if dry_run:
+                            created_count += 1
+                            continue
+
+                        reading, created = Reading.objects.update_or_create(
+                            meter=meter,
+                            date=reading_date,
+                            defaults={'value': None}
+                        )
+                        for zone_name, val in zone_values.items():
+                            comp = components[zone_name]
+                            ZoneReading.objects.update_or_create(
+                                reading=reading,
+                                tariff_component=comp,
+                                defaults={'value': val}
+                            )
+                        if created:
+                            created_count += 1
+                        else:
+                            updated_count += 1
+                        affected_meters.add(meter.pk)
+                        log_action(user=request.user, action='IMPORT', model_name='Reading', object_id=reading.pk,
+                                   details=f"Импорт показаний для {meter.serial_number} от {reading_date}", request=request)
+
                     else:
-                        updated_count += 1
-                    log_action(user=request.user, action='IMPORT', model_name='Reading', object_id=reading.pk,
-                               details=f"Импорт показаний для {meter.serial_number} от {reading_date}", request=request)
+                        if not value_col:
+                            errors.append(f"Строка {row_idx}: для однотарифного счётчика нужна колонка 'value'")
+                            continue
+
+                        val = row[value_col-1] if len(row) >= value_col else None
+                        if val is None:
+                            errors.append(f"Строка {row_idx}: отсутствует значение показания")
+                            continue
+                        try:
+                            value = Decimal(str(val))
+                        except Exception:
+                            errors.append(f"Строка {row_idx}: неверное числовое значение для показания")
+                            continue
+
+                        if dry_run:
+                            created_count += 1
+                            continue
+
+                        reading, created = Reading.objects.update_or_create(
+                            meter=meter,
+                            date=reading_date,
+                            defaults={'value': value}
+                        )
+                        if created:
+                            created_count += 1
+                        else:
+                            updated_count += 1
+                        affected_meters.add(meter.pk)
+                        log_action(user=request.user, action='IMPORT', model_name='Reading', object_id=reading.pk,
+                                   details=f"Импорт показаний для {meter.serial_number} от {reading_date}", request=request)
+
+            if not dry_run:
+                for meter_pk in affected_meters:
+                    meter = Meter.objects.get(pk=meter_pk)
+                    meter.recalc_consumption()
 
             if errors:
                 messages.warning(request, f"Импорт завершён с ошибками. Создано/обновлено: {created_count}, пропущено строк: {len(errors)}. Ошибки: {', '.join(errors[:10])}")
@@ -1131,7 +1238,6 @@ def import_readings(request):
 
 @login_required
 def download_import_template(request):
-    """Скачивание шаблона Excel для импорта показаний."""
     if not _check_energy_edit_access(request.user):
         messages.error(request, "У вас нет прав на скачивание шаблона.")
         return redirect('energy:meter_list')
@@ -1161,7 +1267,6 @@ def download_import_template(request):
 
 @login_required
 def export_readings(request):
-    """Экспорт показаний выбранного счётчика в Excel."""
     if not _check_energy_view_access(request.user):
         messages.error(request, "У вас нет доступа к экспорту показаний.")
         return redirect('energy:meter_list')
@@ -1214,7 +1319,7 @@ def export_readings(request):
 
 
 # ------------------------------------------------------------
-# НАСТРАИВАЕМЫЙ ДАШБОРД (энергетика)
+# НАСТРАИВАЕМЫЙ ДАШБОРД
 # ------------------------------------------------------------
 AVAILABLE_WIDGETS = {
     'kpi': {'title': 'Ключевые показатели', 'order': 1},
@@ -1226,7 +1331,6 @@ AVAILABLE_WIDGETS = {
 }
 
 def get_widget_data(widget_name, request, filters):
-    """Вспомогательная функция для получения данных конкретного виджета."""
     from django.db.models import Sum
     period_type = filters.get('period', 'month')
     year = filters.get('year', date.today().year)
@@ -1250,7 +1354,7 @@ def get_widget_data(widget_name, request, filters):
         end_date = date(year, 12, 31)
         prev_start_date = date(year-1, 1, 1)
         prev_end_date = date(year-1, 12, 31)
-    meters = Meter.objects.filter(is_active=True)
+    meters = Meter.objects.filter(is_active=True, is_technical=False)
     if resource_type_id != 'all':
         meters = meters.filter(resource_type_id=resource_type_id)
     if widget_name == 'kpi':
@@ -1333,10 +1437,6 @@ def get_widget_data(widget_name, request, filters):
 
 @login_required
 def energy_dashboard(request):
-    """
-    Страница дашборда энергетики с настраиваемыми виджетами.
-    Использует сессию для сохранения настроек (выбранные виджеты, порядок, фильтры).
-    """
     dashboard_settings = request.session.get('energy_dashboard_settings', {})
     selected_widgets = dashboard_settings.get('widgets', ['kpi', 'consumption_chart', 'resource_pie', 'top_meters', 'anomaly_table'])
     widget_order = dashboard_settings.get('order', [w for w in selected_widgets if w in AVAILABLE_WIDGETS])
@@ -1395,7 +1495,6 @@ def energy_dashboard(request):
 @require_POST
 @login_required
 def save_dashboard_settings(request):
-    """Сохраняет настройки виджетов дашборда в сессию."""
     data = json.loads(request.body)
     threshold = data.get('threshold', 2.0)
     if threshold == '':
@@ -1432,22 +1531,42 @@ def reset_initial_readings(request, pk):
         if form.is_valid():
             reset_date = form.cleaned_data['reset_date']
             meter.reset_date = reset_date
+            meter.save()
 
             if meter.is_multi_tariff:
                 for key, value in form.cleaned_data.items():
                     if key.startswith('zone_'):
                         comp_id = int(key.split('_')[1])
                         comp = TariffComponent.objects.get(pk=comp_id)
-                        InitialZoneReading.objects.update_or_create(
+                        # Удаляем все записи истории для этой зоны с date_from >= reset_date
+                        InitialZoneValueHistory.objects.filter(
                             meter=meter,
                             tariff_component=comp,
-                            defaults={'value': value}
+                            date_from__gte=reset_date
+                        ).delete()
+                        # Создаём новую запись
+                        InitialZoneValueHistory.objects.create(
+                            meter=meter,
+                            tariff_component=comp,
+                            value=value,
+                            date_from=reset_date
                         )
                 meter.initial_value = 0
+                meter.save()
             else:
+                # Для однотарифного аналогично
+                InitialValueHistory.objects.filter(
+                    meter=meter,
+                    date_from__gte=reset_date
+                ).delete()
+                InitialValueHistory.objects.create(
+                    meter=meter,
+                    value=form.cleaned_data['initial_value'],
+                    date_from=reset_date
+                )
                 meter.initial_value = form.cleaned_data['initial_value']
+                meter.save()
 
-            meter.save()
             meter.recalc_consumption()
 
             log_action(user=request.user, action='EDIT', model_name='Meter', object_id=meter.pk,

@@ -11,7 +11,8 @@
             <a href="{% url 'requests_app:material_add' %}" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1"><i class="bi bi-plus-circle"></i> Добавить материал</a>
         {% endif %}
         <a href="{% url 'requests_app:import_materials' %}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1"><i class="bi bi-upload"></i> Импорт из Excel</a>
-        <a href="{% url 'requests_app:material_stock_export' %}{% if search %}?search={{ search }}{% endif %}" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 ms-2"><i class="bi bi-file-earmark-excel"></i> Экспорт в Excel</a>
+        <a href="{% url 'requests_app:material_stock_export' %}{% if search %}?search={{ search|urlencode }}{% endif %}" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 ms-2"><i class="bi bi-file-earmark-excel"></i> Экспорт в Excel</a>
+        <a href="{% url 'requests_app:material_consumption_report' %}" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 ms-2"><i class="bi bi-bar-chart"></i> Отчёт по материалам</a>
         <a href="{% url 'requests_app:request_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1 ms-2"><i class="bi bi-arrow-left"></i> Назад</a>
     </div>
 </div>
@@ -29,7 +30,20 @@
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-sm table-striped table-hover mb-0 align-middle">
-                <thead class="table-dark"><tr class="text-center"><th>№</th><th>Наименование</th><th>Ед. изм.</th><th>Цена за ед. (₽)</th><th>Остаток</th>{% if user_role in 'ADMIN,ENGINEER,DISPATCHER' %}<th>Действия</th>{% endif %}</tr></thead>
+                <thead class="table-dark">
+                    <tr class="text-center">
+                        <th>№</th>
+                        <th>Наименование</th>
+                        <th>Ед. изм.</th>
+                        <th>Цена за ед. (₽)</th>
+                        <th>Остаток</th>
+                        <th>Мин. остаток</th>
+                        <th>Статус</th>
+                        {% if user_role in 'ADMIN,ENGINEER,DISPATCHER' %}
+                        <th>Действия</th>
+                        {% endif %}
+                    </tr>
+                </thead>
                 <tbody>
                     {% for material in materials %}
                     <tr class="text-center" id="material-row-{{ material.id }}">
@@ -38,15 +52,25 @@
                         <td>{{ material.unit|escape }}</td>
                         <td>{{ material.default_price|space_thousands }}</td>
                         <td><strong>{{ material.quantity_in_stock|floatformat:2 }}</strong> {{ material.unit|escape }}</td>
+                        <td>{{ material.min_stock|floatformat:2 }}</td>
+                        <td>
+                            {% if material.quantity_in_stock <= material.min_stock %}
+                                <span class="badge bg-danger">⚠️ Низкий остаток</span>
+                            {% else %}
+                                <span class="badge bg-success">✅ Норма</span>
+                            {% endif %}
+                        </td>
                         {% if user_role in 'ADMIN,ENGINEER,DISPATCHER' %}
                         <td class="text-center">
                             <a href="{% url 'requests_app:material_edit' material.id %}" class="btn btn-sm btn-outline-primary rounded-pill px-2 py-1" title="Редактировать"><i class="bi bi-pencil"></i></a>
+                            <a href="{% url 'requests_app:material_history' material.id %}" class="btn btn-sm btn-outline-info rounded-pill px-2 py-1" title="История"><i class="bi bi-clock-history"></i></a>
+                            <a href="{% url 'requests_app:material_adjust' material.id %}" class="btn btn-sm btn-outline-warning rounded-pill px-2 py-1" title="Корректировка"><i class="bi bi-sliders"></i></a>
                             <button class="btn btn-sm btn-outline-danger rounded-pill px-2 py-1 delete-material" data-id="{{ material.id }}" data-name="{{ material.name|escape }}" title="Удалить"><i class="bi bi-trash"></i></button>
                         </td>
                         {% endif %}
                     </tr>
                     {% empty %}
-                    <tr><td colspan="{% if user_role in 'ADMIN,ENGINEER,DISPATCHER' %}6{% else %}5{% endif %}" class="text-center text-muted py-4">Материалы не найдены</td></tr>
+                    <tr><td colspan="{% if user_role in 'ADMIN,ENGINEER,DISPATCHER' %}8{% else %}7{% endif %}" class="text-center text-muted py-4">Материалы не найдены</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

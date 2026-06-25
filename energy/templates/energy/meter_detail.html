@@ -1,255 +1,356 @@
 {% extends 'base.html' %}
+{% load static %}
 {% load custom_filters %}
 
 {% block title %}{{ meter.serial_number }}{% endblock %}
 
-{% block content %}
-<div class="mb-3">
-    <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm">
-        <i class="bi bi-arrow-left"></i> Назад
-    </a>
-</div>
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+{% endblock %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4>🔌 Прибор учёта (№ {{ meter.serial_number }})</h4>
-    <div>
-        {% if can_edit %}
-            <a href="{% url 'energy:add_reading' %}?meter={{ meter.pk }}" class="btn btn-success btn-sm me-2">
-                <i class="bi bi-plus-circle"></i> Добавить показания
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Хлебные крошки -->
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'energy:meter_list' %}">Приборы учёта</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ meter.serial_number }}</li>
+        </ol>
+    </nav>
+
+    <!-- Шапка с кнопками -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h2 class="fw-semibold fs-3 mb-0 d-flex align-items-center">
+            <i class="bi bi-speedometer2 text-primary me-2"></i>
+            {{ meter.serial_number }}
+            <span class="ms-3 small">
+                {% if meter.is_active %}
+                    <span class="badge bg-success rounded-pill">Активен</span>
+                {% else %}
+                    <span class="badge bg-secondary rounded-pill">Неактивен</span>
+                {% endif %}
+                {% if meter.is_technical %}
+                    <span class="badge bg-warning text-dark rounded-pill">⚙️ Технический учёт</span>
+                {% endif %}
+            </span>
+        </h2>
+        <div>
+            {% if can_edit %}
+            <a href="{% url 'energy:add_reading' %}?meter={{ meter.pk }}" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1">
+                <i class="bi bi-plus-circle"></i> Показания
             </a>
-            <a href="{% url 'energy:meter_edit' meter.pk %}" class="btn btn-warning btn-sm me-2" title="Редактировать">
+            <a href="{% url 'energy:meter_edit' meter.pk %}" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
                 <i class="bi bi-pencil"></i> Редактировать
             </a>
-            <a href="{% url 'energy:reset_initial_readings' meter.pk %}" class="btn btn-secondary btn-sm me-2" title="Сбросить начальные показания">
+            <a href="{% url 'energy:reset_initial_readings' meter.pk %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
                 <i class="bi bi-arrow-repeat"></i> Сброс начальных
             </a>
-        {% endif %}
-        {% if can_delete %}
-            <a href="{% url 'energy:meter_delete' meter.pk %}" class="btn btn-danger btn-sm" title="Удалить">
+            {% endif %}
+            {% if can_delete %}
+            <a href="{% url 'energy:meter_delete' meter.pk %}" class="btn btn-outline-danger btn-sm rounded-pill px-3 py-1" onclick="return confirm('Удалить счётчик {{ meter.serial_number }}?')">
                 <i class="bi bi-trash"></i> Удалить
             </a>
-        {% endif %}
-    </div>
-</div>
-
-<!-- Информация о счётчике -->
-<div class="card mb-4">
-    <div class="card-body">
-        <div class="row">
-            <div class="col-md-6">
-                <p><strong>Серийный номер:</strong> {{ meter.serial_number }}</p>
-                <p><strong>Тип ресурса:</strong> {{ meter.resource_type.name }} ({{ meter.resource_type.unit }})</p>
-                <p><strong>Тип тарифа:</strong>
-                    {% if meter.is_multi_tariff %}
-                        <span class="badge bg-info">Многотарифный (зоны)</span>
-                    {% else %}
-                        <span class="badge bg-success">Одноставочный</span>
-                    {% endif %}
-                </p>
-            </div>
-            <div class="col-md-6">
-                <p><strong>Местоположение:</strong> {{ meter.location|default:"не указано" }}</p>
-                <p><strong>Коэффициент трансформации:</strong> {{ meter.transformation_ratio }}</p>
-                <p><strong>Начальное показание:</strong> {{ meter.initial_value }} {{ meter.resource_type.unit }}</p>
-                <p><strong>Статус:</strong>
-                    {% if meter.is_active %}
-                        <span class="badge bg-success">Активен</span>
-                    {% else %}
-                        <span class="badge bg-secondary">Неактивен</span>
-                    {% endif %}
-                </p>
-            </div>
+            {% endif %}
         </div>
-        {% if meter.is_multi_tariff %}
-            <div class="row mt-3">
-                <div class="col-12">
-                    <p><strong>Начальные показания по зонам:</strong></p>
-                    <ul>
-                        {% for initial in meter.initial_zone_readings.all %}
-                            <li>{{ initial.tariff_component.name }}: {{ initial.value }} {{ meter.resource_type.unit }}</li>
-                        {% empty %}
-                            <li class="text-muted">Не заданы (считаются от 0)</li>
-                        {% endfor %}
-                    </ul>
+    </div>
+
+    <!-- Вкладки -->
+    <ul class="nav nav-pills mb-4" id="meterTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="info-tab" data-bs-toggle="tab" data-bs-target="#info" type="button" role="tab">
+                <i class="bi bi-info-circle"></i> Общая информация
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="readings-tab" data-bs-toggle="tab" data-bs-target="#readings" type="button" role="tab">
+                <i class="bi bi-table"></i> Показания
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="chart-tab" data-bs-toggle="tab" data-bs-target="#chart" type="button" role="tab">
+                <i class="bi bi-graph-up"></i> График потребления
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents" type="button" role="tab">
+                <i class="bi bi-files"></i> Документы
+            </button>
+        </li>
+    </ul>
+
+    <!-- Содержимое вкладок -->
+    <div class="tab-content">
+        <!-- === Вкладка 1: Общая информация === -->
+        <div class="tab-pane fade show active" id="info" role="tabpanel">
+            <div class="row g-4">
+                <!-- Карточка основной информации -->
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm rounded-4 h-100">
+                        <div class="card-body">
+                            <h6 class="fw-semibold mb-3"><i class="bi bi-info-circle text-primary me-2"></i>Основные данные</h6>
+                            <table class="table table-borderless table-sm">
+                                <tbody>
+                                    <tr><td class="text-muted w-40">Тип ресурса</td><td>{{ meter.resource_type.name }} ({{ meter.resource_type.unit }})</td></tr>
+                                    <tr><td class="text-muted">Тип тарифа</td>
+                                        <td>{% if meter.is_multi_tariff %}<span class="badge bg-info text-dark rounded-pill">Многотарифный</span>{% else %}<span class="badge bg-success rounded-pill">Одноставочный</span>{% endif %}</td>
+                                    </tr>
+                                    <tr><td class="text-muted">Местоположение</td><td>{{ meter.location|default:"не указано" }}</td></tr>
+                                    <tr><td class="text-muted">Коэффициент трансформации</td><td>{{ meter.transformation_ratio }}</td></tr>
+                                    <tr><td class="text-muted">Текущее начальное показание</td><td>{{ meter.initial_value }} {{ meter.resource_type.unit }}</td></tr>
+                                    {% if meter.reset_date %}
+                                    <tr><td class="text-muted">Дата последнего сброса</td><td>{{ meter.reset_date|date:"d.m.Y" }}</td></tr>
+                                    {% endif %}
+                                    <tr><td class="text-muted">Последнее показание</td>
+                                        <td>{% if last_reading %}
+                                            {{ last_reading.date|date:"d.m.Y" }} — {{ last_reading.total_consumption|floatformat:2 }} {{ meter.resource_type.unit }}
+                                        {% else %}нет{% endif %}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Карточка истории начальных значений -->
+                <div class="col-md-6">
+                    <div class="card border-0 shadow-sm rounded-4 h-100">
+                        <div class="card-body">
+                            <h6 class="fw-semibold mb-3"><i class="bi bi-clock-history text-warning me-2"></i>История начальных показаний</h6>
+                            {% if meter.is_multi_tariff %}
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover">
+                                        <thead><tr><th>Зона</th><th>Значение</th><th>С даты</th></tr></thead>
+                                        <tbody>
+                                            {% for h in meter.initial_zone_value_history.all|dictsort:"date_from" %}
+                                            <tr>
+                                                <td>{{ h.tariff_component.name }}</td>
+                                                <td>{{ h.value }}</td>
+                                                <td>{{ h.date_from|date:"d.m.Y" }}</td>
+                                            </tr>
+                                            {% empty %}
+                                            <tr><td colspan="3" class="text-muted text-center">Нет истории</td></tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% else %}
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover">
+                                        <thead><tr><th>Значение</th><th>С даты</th></tr></thead>
+                                        <tbody>
+                                            {% for h in meter.initial_value_history.all|dictsort:"date_from" %}
+                                            <tr><td>{{ h.value }}</td><td>{{ h.date_from|date:"d.m.Y" }}</td></tr>
+                                            {% empty %}
+                                            <tr><td colspan="2" class="text-muted text-center">Нет истории</td></tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
-        {% endif %}
-    </div>
-</div>
-
-<!-- График потребления (интерактивный) -->
-<div class="card mt-4">
-    <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap">
-        <strong><i class="bi bi-graph-up"></i> Динамика потребления</strong>
-        <div>
-            <select id="monthSelect" class="form-select form-select-sm d-inline-block w-auto me-2">
-                <option value="6" {% if selected_months == 6 %}selected{% endif %}>6 месяцев</option>
-                <option value="12" {% if selected_months == 12 %}selected{% endif %}>12 месяцев</option>
-                <option value="24" {% if selected_months == 24 %}selected{% endif %}>24 месяца</option>
-                <option value="36" {% if selected_months == 36 %}selected{% endif %}>36 месяцев</option>
-            </select>
-            <select id="chartTypeSelect" class="form-select form-select-sm d-inline-block w-auto me-2">
-                <option value="line" {% if chart_type == 'line' %}selected{% endif %}>Линия</option>
-                <option value="bar" {% if chart_type == 'bar' %}selected{% endif %}>Столбцы</option>
-            </select>
-            <button id="exportChartBtn" class="btn btn-sm btn-outline-secondary">📸 Экспорт PNG</button>
         </div>
-    </div>
-    <div class="card-body">
-        <canvas id="consumptionChart" height="200" class="w-100"></canvas>
-    </div>
-</div>
 
-<!-- Последние показания (с аномалиями) и документом -->
-<div class="card mt-2">
-    <div class="card-header bg-light">
-        <strong><i class="bi bi-clock-history"></i> Последние показания (не более 5)</strong>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-sm table-striped table-hover mb-0">
-                <thead>
-                    <tr class="text-center">
-                        <th>Дата</th>
-                        <th>Тип</th>
-                        <th>Показания</th>
-                        <th>Потребление ({{ meter.resource_type.unit }})</th>
-                        <th>Документ</th>
-                        {% if can_edit %}<th>Действия</th>{% endif %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in last_readings_with_anomaly %}
-                    <tr {% if item.anomaly %}class="table-danger"{% endif %}>
-                        <td class="text-center">{{ item.reading.date|date:"d.m.Y" }}</td>
-                        <td class="text-center">{% if item.reading.zone_readings.all %}по зонам{% else %}общее{% endif %}</td>
-                        <td>
-                            {% if item.reading.zone_readings.all %}
-                                <ul class="mb-0">
-                                    {% for z in item.reading.zone_readings.all %}
-                                        <li>{{ z.tariff_component.name }}: {{ z.value }}</li>
-                                    {% endfor %}
-                                </ul>
-                            {% else %}
-                                {{ item.reading.value|default:"—" }}
-                            {% endif %}
-                        </td>
-                        <td class="text-end">
-                            {% if item.reading.zone_readings.all %}
-                                {% for z in item.reading.zone_readings.all %}
-                                    {{ z.tariff_component.name }}: {{ z.consumption|floatformat:2 }}<br>
+        <!-- === Вкладка 2: Показания === -->
+        <div class="tab-pane fade" id="readings" role="tabpanel">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-0">
+                    <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                        <h6 class="fw-semibold mb-0"><i class="bi bi-table me-2"></i>Последние показания</h6>
+                        <div>
+                            <a href="{% url 'energy:export_readings' %}?meter={{ meter.pk }}" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1">
+                                <i class="bi bi-file-earmark-excel"></i> Экспорт Excel
+                            </a>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-modern table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Дата</th>
+                                    <th>Тип</th>
+                                    <th>Показания</th>
+                                    <th>Потребление ({{ meter.resource_type.unit }})</th>
+                                    <th>Документ</th>
+                                    {% if can_edit %}<th>Действия</th>{% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in last_readings_with_anomaly %}
+                                <tr {% if item.anomaly %}class="table-danger"{% endif %}>
+                                    <td class="text-nowrap">{{ item.reading.date|date:"d.m.Y" }}</td>
+                                    <td>{% if item.reading.zone_readings.all %}по зонам{% else %}общее{% endif %}</td>
+                                    <td>
+                                        {% if item.reading.zone_readings.all %}
+                                            <ul class="mb-0 ps-3 small">
+                                                {% for z in item.reading.zone_readings.all %}
+                                                    <li>{{ z.tariff_component.name }}: {{ z.value }}</li>
+                                                {% endfor %}
+                                            </ul>
+                                        {% else %}
+                                            {{ item.reading.value|default:"—" }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-nowrap">
+                                        {% if item.reading.zone_readings.all %}
+                                            {% for z in item.reading.zone_readings.all %}
+                                                {{ z.tariff_component.name }}: {{ z.consumption|floatformat:2 }}<br>
+                                            {% endfor %}
+                                            <strong>Итого: {{ item.reading.total_consumption|floatformat:2 }}</strong>
+                                        {% else %}
+                                            {{ item.reading.total_consumption|floatformat:2 }}
+                                        {% endif %}
+                                        {% if item.anomaly %}<i class="bi bi-exclamation-triangle text-danger ms-1" title="Аномалия"></i>{% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if item.reading.document and item.reading.document.name %}
+                                            <a href="{% url 'energy:reading_document' item.reading.pk %}" target="_blank" title="Просмотреть" class="btn-icon-circle btn-icon-circle-sm btn-icon-circle-info">
+                                                <i class="bi bi-file-earmark-text"></i>
+                                            </a>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    {% if can_edit %}
+                                    <td class="text-center">
+                                        <div class="btn-group btn-group-sm gap-1">
+                                            <a href="{% url 'energy:reading_edit' item.reading.pk %}?next={{ request.path }}" class="btn-icon-circle btn-icon-circle-sm btn-icon-circle-warning" title="Редактировать">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <a href="{% url 'energy:reading_delete' item.reading.pk %}?next={{ request.path }}" class="btn-icon-circle btn-icon-circle-sm btn-icon-circle-danger" onclick="return confirm('Удалить показание?')" title="Удалить">
+                                                <i class="bi bi-trash"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                    {% endif %}
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="6" class="text-center py-4 text-muted">Нет показаний</td></tr>
                                 {% endfor %}
-                                <strong>Итого: {{ item.reading.total_consumption|floatformat:2 }}</strong>
-                            {% else %}
-                                {{ item.reading.total_consumption|floatformat:2 }}
-                            {% endif %}
-                        </td>
-                        <!-- ИКОНКА ДОКУМЕНТА (простая, без кнопки) -->
-                        <td class="text-center">
-                            {% if item.reading.document and item.reading.document.name %}
-                                <a href="{% url 'energy:reading_document' item.reading.pk %}" target="_blank" title="Просмотреть документ" style="text-decoration: none;">
-                                    <i class="bi bi-file-earmark-text-fill text-primary fs-4"></i>
-                                </a>
-                            {% else %}
-                                <span class="text-muted"><i class="bi bi-file-earmark-x fs-5"></i></span>
-                            {% endif %}
-                        </td>
-                        <!-- Действия -->
-                        {% if can_edit %}
-                        <td class="text-center">
-                            <a href="{% url 'energy:reading_edit' item.reading.pk %}?next={{ request.path }}" class="btn btn-sm btn-outline-success" title="Редактировать">
-                                <i class="bi bi-pencil"></i>
-                            </a>
-                            <a href="{% url 'energy:reading_delete' item.reading.pk %}?next={{ request.path }}" class="btn btn-sm btn-outline-danger" title="Удалить">
-                                <i class="bi bi-trash"></i>
-                            </a>
-                        </td>
-                        {% endif %}
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="6" class="text-center text-muted">Нет показаний</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Пагинация для показаний (если много) – можно добавить отдельную -->
+                </div>
+            </div>
         </div>
-    </div>
-</div>
 
-<!-- Документы счётчика (с пагинацией) -->
-<div class="card mt-2">
-    <div class="card-header bg-light d-flex justify-content-between align-items-center">
-        <strong><i class="bi bi-files"></i> Документы</strong>
-        {% if can_edit %}
-            <a href="{% url 'energy:upload_document' meter.pk %}" class="btn btn-sm btn-primary">
-                <i class="bi bi-upload"></i> Загрузить документ
-            </a>
-        {% endif %}
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-sm table-striped mb-0">
-                <thead>
-                    <tr>
-                        <th>Файл</th>
-                        <th>Описание</th>
-                        <th>Дата загрузки</th>
-                        {% if can_edit %}<th>Действия</th>{% endif %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for doc in documents_page %}
-                    <tr>
-                        <td><a href="{{ doc.file.url }}" target="_blank">{{ doc.get_file_name }}</a></td>
-                        <td>{{ doc.description|default:"—" }}</td>
-                        <td>{{ doc.uploaded_at|date:"d.m.Y H:i" }}</td>
+        <!-- === Вкладка 3: График === -->
+        <div class="tab-pane fade" id="chart" role="tabpanel">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                        <h6 class="fw-semibold mb-0"><i class="bi bi-graph-up me-2"></i>Динамика потребления</h6>
+                        <div>
+                            <select id="monthSelect" class="form-select form-select-sm d-inline-block w-auto">
+                                <option value="6" {% if selected_months == 6 %}selected{% endif %}>6 месяцев</option>
+                                <option value="12" {% if selected_months == 12 %}selected{% endif %}>12 месяцев</option>
+                                <option value="24" {% if selected_months == 24 %}selected{% endif %}>24 месяца</option>
+                                <option value="36" {% if selected_months == 36 %}selected{% endif %}>36 месяцев</option>
+                            </select>
+                            <select id="chartTypeSelect" class="form-select form-select-sm d-inline-block w-auto">
+                                <option value="line" {% if chart_type == 'line' %}selected{% endif %}>Линия</option>
+                                <option value="bar" {% if chart_type == 'bar' %}selected{% endif %}>Столбцы</option>
+                            </select>
+                            <button id="exportChartBtn" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+                                <i class="bi bi-image"></i> PNG
+                            </button>
+                        </div>
+                    </div>
+                    <canvas id="consumptionChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- === Вкладка 4: Документы === -->
+        <div class="tab-pane fade" id="documents" role="tabpanel">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-semibold mb-0"><i class="bi bi-files me-2"></i>Документы счётчика</h6>
                         {% if can_edit %}
-                        <td>
-                            <a href="{% url 'energy:delete_document' doc.pk %}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Удалить документ?')">
-                                <i class="bi bi-trash"></i>
-                            </a>
-                        </td>
+                        <a href="{% url 'energy:upload_document' meter.pk %}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+                            <i class="bi bi-upload"></i> Загрузить
+                        </a>
                         {% endif %}
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="4" class="text-center text-muted">Нет загруженных документов</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% if documents_page.has_other_pages %}
-        <div class="pagination justify-content-center mt-3">
-            <nav aria-label="Пагинация документов">
-                <ul class="pagination pagination-sm">
-                    {% if documents_page.has_previous %}
-                        <li class="page-item">
-                            <a class="page-link" href="{{ base_url }}?doc_page={{ documents_page.previous_page_number }}&months={{ selected_months }}&chart_type={{ chart_type }}">«</a>
-                        </li>
-                    {% else %}
-                        <li class="page-item disabled"><span class="page-link">«</span></li>
+                    </div>
+                    {% if documents_page %}
+                    <div class="table-responsive">
+                        <table class="table table-modern table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Файл</th>
+                                    <th>Описание</th>
+                                    <th>Дата загрузки</th>
+                                    {% if can_edit %}<th>Действия</th>{% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for doc in documents_page %}
+                                <tr>
+                                    <td><a href="{{ doc.file.url }}" target="_blank"><i class="bi bi-file-earmark me-2"></i>{{ doc.get_file_name }}</a></td>
+                                    <td>{{ doc.description|default:"—" }}</td>
+                                    <td>{{ doc.uploaded_at|date:"d.m.Y H:i" }}</td>
+                                    {% if can_edit %}
+                                    <td>
+                                        <a href="{% url 'energy:delete_document' doc.pk %}" class="btn-icon-circle btn-icon-circle-sm btn-icon-circle-danger" onclick="return confirm('Удалить документ?')">
+                                            <i class="bi bi-trash"></i>
+                                        </a>
+                                    </td>
+                                    {% endif %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if documents_page.has_other_pages %}
+                    <div class="mt-3">
+                        {% include 'includes/pagination.html' with page_obj=documents_page %}
+                    </div>
                     {% endif %}
-                    <li class="page-item active"><span class="page-link">{{ documents_page.number }}</span></li>
-                    {% if documents_page.has_next %}
-                        <li class="page-item">
-                            <a class="page-link" href="{{ base_url }}?doc_page={{ documents_page.next_page_number }}&months={{ selected_months }}&chart_type={{ chart_type }}">»</a>
-                        </li>
                     {% else %}
-                        <li class="page-item disabled"><span class="page-link">»</span></li>
+                    <p class="text-muted text-center py-3">Нет загруженных документов</p>
                     {% endif %}
-                </ul>
-            </nav>
+                </div>
+            </div>
         </div>
-        {% endif %}
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // === 1. Активация вкладки по hash (чтобы не сбрасывалась) ===
+        function activateTabFromHash() {
+            const hash = window.location.hash;
+            if (hash) {
+                const tabId = hash.replace('#', '');
+                const tabButton = document.querySelector(`#meterTabs button[data-bs-target="#${tabId}"]`);
+                if (tabButton) {
+                    const tab = new bootstrap.Tab(tabButton);
+                    tab.show();
+                }
+            }
+        }
+
+        // Вызываем при загрузке
+        activateTabFromHash();
+
+        // При клике на вкладку обновляем hash (для истории и прямой ссылки)
+        document.querySelectorAll('#meterTabs button').forEach(button => {
+            button.addEventListener('shown.bs.tab', function(e) {
+                const target = this.getAttribute('data-bs-target');
+                if (target) {
+                    window.location.hash = target.replace('#', '');
+                }
+            });
+        });
+
+        // === 2. График ===
         const ctx = document.getElementById('consumptionChart').getContext('2d');
         const labels = {{ month_labels|safe }};
         let chartInstance = null;
@@ -264,8 +365,18 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: true,
-                        scales: { x: { stacked: true }, y: { beginAtZero: true, stacked: true, title: { display: true, text: 'Потребление ({{ meter.resource_type.unit }})' } } },
-                        plugins: { tooltip: { mode: 'index', intersect: false }, legend: { position: 'top' } }
+                        scales: {
+                            x: { stacked: true },
+                            y: {
+                                beginAtZero: true,
+                                stacked: true,
+                                title: { display: true, text: 'Потребление ({{ meter.resource_type.unit }})' }
+                            }
+                        },
+                        plugins: {
+                            tooltip: { mode: 'index', intersect: false },
+                            legend: { position: 'top' }
+                        }
                     }
                 });
             {% else %}
@@ -288,7 +399,12 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: true,
-                        scales: { y: { beginAtZero: true, title: { display: true, text: 'Потребление ({{ meter.resource_type.unit }})' } } }
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'Потребление ({{ meter.resource_type.unit }})' }
+                            }
+                        }
                     }
                 });
             {% endif %}
@@ -298,16 +414,17 @@
         const chartTypeSelect = document.getElementById('chartTypeSelect');
         const exportBtn = document.getElementById('exportChartBtn');
 
+        // При изменении месяца или типа графика переходим на URL с якорем #chart
         monthSelect.addEventListener('change', function() {
             const months = this.value;
             const chartType = chartTypeSelect.value;
-            window.location.href = `?months=${months}&chart_type=${chartType}`;
+            window.location.href = `?months=${months}&chart_type=${chartType}#chart`;
         });
 
         chartTypeSelect.addEventListener('change', function() {
             const months = monthSelect.value;
             const chartType = this.value;
-            window.location.href = `?months=${months}&chart_type=${chartType}`;
+            window.location.href = `?months=${months}&chart_type=${chartType}#chart`;
         });
 
         exportBtn.addEventListener('click', function() {
@@ -324,4 +441,82 @@
         initChart();
     });
 </script>
+<style>
+    /* Стили для единообразия с contract_list */
+    .btn-icon-circle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+        text-decoration: none;
+        font-size: 0.9rem;
+    }
+    .btn-icon-circle-sm {
+        width: 28px;
+        height: 28px;
+        font-size: 0.8rem;
+    }
+    .btn-icon-circle-info {
+        color: #0d6efd;
+        border-color: #0d6efd;
+    }
+    .btn-icon-circle-info:hover {
+        background: #0d6efd;
+        color: white;
+    }
+    .btn-icon-circle-warning {
+        color: #ffc107;
+        border-color: #ffc107;
+    }
+    .btn-icon-circle-warning:hover {
+        background: #ffc107;
+        color: white;
+    }
+    .btn-icon-circle-danger {
+        color: #dc3545;
+        border-color: #dc3545;
+    }
+    .btn-icon-circle-danger:hover {
+        background: #dc3545;
+        color: white;
+    }
+    .table-modern th {
+        border-top: none;
+        font-weight: 600;
+        color: #495057;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .table-modern td {
+        vertical-align: middle;
+        padding: 12px 10px;
+    }
+    .nav-pills .nav-link.active {
+        background-color: #0d6efd;
+        color: white;
+    }
+    .nav-pills .nav-link {
+        color: #495057;
+        border: 1px solid #dee2e6;
+        border-radius: 50px;
+        margin-right: 4px;
+    }
+    .nav-pills .nav-link:hover:not(.active) {
+        background-color: #f8f9fa;
+    }
+    .w-40 {
+        width: 40%;
+    }
+    .badge {
+        font-weight: 500;
+    }
+    .card {
+        border-radius: 20px !important;
+    }
+</style>
 {% endblock %}

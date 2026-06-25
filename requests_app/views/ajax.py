@@ -7,6 +7,7 @@ from django.db.models import Q
 from buildings.models import Building
 from ..models import ServiceRequest
 from users.models import User
+from ..utils import generate_new_captcha
 
 
 @login_required
@@ -47,3 +48,10 @@ def api_overdue_requests(request):
             'status_display': req.get_status_display(),
         })
     return JsonResponse({'requests': requests_data})
+
+
+def api_captcha(request):
+    """AJAX-эндпоинт для обновления капчи в публичной форме."""
+    lang = request.GET.get('lang', 'ru')
+    captcha = generate_new_captcha(lang)
+    return JsonResponse(captcha)

@@ -1,26 +1,97 @@
 # users/views.py
+# -*- coding: utf-8 -*-
+
+"""
+Представления (views) приложения users.
+Обрабатывают:
+- список пользователей с пагинацией и фильтрацией;
+- создание, редактирование, удаление пользователей;
+- смену пароля (администратором и самим пользователем);
+- массовые действия (активация, деактивация, смена роли);
+- личный кабинет (профиль) с историей входов;
+- управление группами (CRUD);
+- справочник ролей.
+"""
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User, Group
 from django.contrib import messages
 from django.db.models import Q, Count
-from .models import Profile, UserRole
+from django.core.paginator import Paginator
+from django.utils import timezone
+from datetime import timedelta
+
+from .models import Profile, UserRole, UserLogin
 from .decorators import admin_required
 from .forms import (
-    UserFilterForm, ChangePasswordForm, UserCreateForm, UserEditForm,
-    ProfileEditForm, GroupForm, ProfileForm
+    UserFilterForm,
+    ChangePasswordForm,
+    UserCreateForm,
+    UserEditForm,
+    ProfileEditForm,
+    GroupForm,
+    ProfileForm,
 )
 
 
+# ----------------------------------------------------------------------
+# Вспомогательные функции
+# ----------------------------------------------------------------------
+
 def get_role_display(role_code):
+    """Возвращает читаемое название роли по её коду."""
     return dict(UserRole.choices).get(role_code, role_code)
 
+
+def get_profile_context(user):
+    """
+    Формирует словарь со статистикой активности пользователя
+    и последними записями о входах.
+    Используется в представлении profile.
+    """
+    # Последние 10 записей о входах
+    logins = user.logins.all()[:10]
+    # Общее количество входов
+    total_logins = user.logins.count()
+    # Сегодня и неделя назад
+    today = timezone.now().date()
+    week_ago = today - timedelta(days=7)
+    # Количество входов за сегодня и за неделю
+    logins_today = user.logins.filter(login_time__date=today).count()
+    logins_week = user.logins.filter(login_time__date__gte=week_ago).count()
+
+    return {
+        'logins': logins,
+        'total_logins': total_logins,
+        'logins_today': logins_today,
+        'logins_week': logins_week,
+    }
+
+
+# ----------------------------------------------------------------------
+# Представления для управления пользователями
+# ----------------------------------------------------------------------
 
 @login_required
 @admin_required
 def user_list(request):
-    users = User.objects.select_related('profile').prefetch_related('groups').all()
+    """
+    Список пользователей системы.
+    Доступен только администраторам.
+    Поддерживает фильтрацию по имени, роли, статусу активности.
+    Использует пагинацию (25 пользователей на страницу).
+    """
+    # Базовый QuerySet с оптимизацией запросов
+    users = (
+        User.objects
+        .select_related('profile')
+        .prefetch_related('groups')
+        .all()
+        .order_by('id')  # обязательная сортировка для пагинации
+    )
+
+    # Обработка GET-параметров фильтрации
     form = UserFilterForm(request.GET)
     search = request.GET.get('search', '')
     role = request.GET.get('role', '')
@@ -40,6 +111,12 @@ def user_list(request):
     elif is_active_filter == 'inactive':
         users = users.filter(is_active=False)
 
+    # Пагинация
+    paginator = Paginator(users, 25)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    # Статистика для карточек вверху страницы
     stats = {
         'total': User.objects.count(),
         'active': User.objects.filter(is_active=True).count(),
@@ -51,7 +128,7 @@ def user_list(request):
     }
 
     context = {
-        'users': users,
+        'page_obj': page_obj,
         'form': form,
         'stats': stats,
         'search': search,
@@ -64,34 +141,47 @@ def user_list(request):
 @login_required
 @admin_required
 def user_create(request):
+    """
+    Создание нового пользователя.
+    Администратор заполняет поля User и Profile (роль, телефон, должность).
+    """
     if request.method == 'POST':
         user_form = UserCreateForm(request.POST)
         profile_form = ProfileForm(request.POST)
         if user_form.is_valid() and profile_form.is_valid():
+            # Сохраняем пользователя с зашифрованным паролем
             user = user_form.save(commit=False)
             user.set_password(user_form.cleaned_data['password'])
             user.save()
-            user_form.save_m2m()
+            user_form.save_m2m()  # сохраняем группы (если есть)
+
+            # Сохраняем профиль (роль, телефон, должность)
             profile = user.profile
             profile.role = profile_form.cleaned_data['role']
             profile.phone = profile_form.cleaned_data['phone']
             profile.position = profile_form.cleaned_data['position']
             profile.save()
+
             messages.success(request, f'Пользователь {user.username} создан.')
             return redirect('users:user_list')
     else:
         user_form = UserCreateForm()
         profile_form = ProfileForm()
+
     return render(request, 'users/user_form.html', {
         'user_form': user_form,
         'profile_form': profile_form,
-        'is_edit': False
+        'is_edit': False,
     })
 
 
 @login_required
 @admin_required
 def user_edit(request, user_id):
+    """
+    Редактирование существующего пользователя.
+    Можно изменить основные поля User, группы, а также профиль (роль, телефон, должность).
+    """
     user = get_object_or_404(User, id=user_id)
     if request.method == 'POST':
         user_form = UserEditForm(request.POST, instance=user)
@@ -104,17 +194,21 @@ def user_edit(request, user_id):
     else:
         user_form = UserEditForm(instance=user)
         profile_form = ProfileForm(instance=user.profile)
-    return render(request, 'users/user_form.html', {
+
+    return render(request, 'users/user_edit.html', {
         'user_form': user_form,
         'profile_form': profile_form,
         'is_edit': True,
-        'user': user
+        'user': user,
     })
 
 
 @login_required
 @admin_required
 def user_delete(request, user_id):
+    """
+    Удаление пользователя (с подтверждением).
+    """
     user = get_object_or_404(User, id=user_id)
     if request.method == 'POST':
         username = user.username
@@ -127,6 +221,9 @@ def user_delete(request, user_id):
 @login_required
 @admin_required
 def user_toggle_active(request, user_id):
+    """
+    Переключение статуса активности пользователя (блокировка/разблокировка).
+    """
     user = get_object_or_404(User, id=user_id)
     user.is_active = not user.is_active
     user.save()
@@ -138,89 +235,62 @@ def user_toggle_active(request, user_id):
 @login_required
 @admin_required
 def bulk_action(request):
-    if request.method == 'POST':
-        action = request.POST.get('action')
-        user_ids = request.POST.getlist('user_ids')
-        if not user_ids:
-            messages.error(request, 'Не выбраны пользователи.')
-            return redirect('users:user_list')
+    """
+    Массовые действия над выбранными пользователями:
+    - удаление;
+    - активация;
+    - деактивация;
+    - смена роли.
+    Суперпользователи и сам текущий пользователь исключаются из обработки.
+    """
+    if request.method != 'POST':
+        return redirect('users:user_list')
 
-        users = User.objects.filter(id__in=user_ids).exclude(is_superuser=True).exclude(id=request.user.id)
-        count = users.count()
-        skipped = len(user_ids) - count
-        if skipped:
-            messages.warning(request, f'{skipped} пользователь(ей) пропущены (суперпользователи или вы сами).')
+    action = request.POST.get('action')
+    user_ids = request.POST.getlist('user_ids')
+    if not user_ids:
+        messages.error(request, 'Не выбраны пользователи.')
+        return redirect('users:user_list')
 
-        if action == 'delete':
-            users.delete()
-            messages.success(request, f'Удалено {count} пользователей.')
-        elif action == 'activate':
-            users.update(is_active=True)
-            messages.success(request, f'Активировано {count} пользователей.')
-        elif action == 'deactivate':
-            users.update(is_active=False)
-            messages.success(request, f'Деактивировано {count} пользователей.')
-        elif action == 'change_role':
-            role = request.POST.get('new_role')
-            if role and role in dict(UserRole.choices):
-                Profile.objects.filter(user__in=users).update(role=role)
-                messages.success(request, f'Роль изменена для {count} пользователей.')
+    # Исключаем суперпользователей и самого себя
+    users = (
+        User.objects
+        .filter(id__in=user_ids)
+        .exclude(is_superuser=True)
+        .exclude(id=request.user.id)
+    )
+    count = users.count()
+    skipped = len(user_ids) - count
+    if skipped:
+        messages.warning(
+            request,
+            f'{skipped} пользователь(ей) пропущены (суперпользователи или вы сами).'
+        )
+
+    if action == 'delete':
+        users.delete()
+        messages.success(request, f'Удалено {count} пользователей.')
+    elif action == 'activate':
+        users.update(is_active=True)
+        messages.success(request, f'Активировано {count} пользователей.')
+    elif action == 'deactivate':
+        users.update(is_active=False)
+        messages.success(request, f'Деактивировано {count} пользователей.')
+    elif action == 'change_role':
+        role = request.POST.get('new_role')
+        if role and role in dict(UserRole.choices):
+            Profile.objects.filter(user__in=users).update(role=role)
+            messages.success(request, f'Роль изменена для {count} пользователей.')
+
     return redirect('users:user_list')
-
-
-@login_required
-def profile(request):
-    """Единая страница профиля: редактирование информации и смена пароля."""
-    if request.method == 'POST':
-        if 'change_password' in request.POST:
-            # Смена пароля
-            password_form = ChangePasswordForm(request.POST)
-            if password_form.is_valid():
-                request.user.set_password(password_form.cleaned_data['password'])
-                request.user.save()
-                messages.success(request, 'Пароль изменён. Пожалуйста, войдите заново.')
-                return redirect('login')
-            else:
-                # Если форма пароля не валидна, отображаем страницу с ошибками
-                profile_form = ProfileEditForm(instance=request.user)
-                context = {
-                    'form': profile_form,
-                    'password_form': password_form,
-                }
-                return render(request, 'users/profile.html', context)
-        else:
-            # Редактирование профиля
-            profile_form = ProfileEditForm(request.POST, request.FILES, instance=request.user)
-            if profile_form.is_valid():
-                profile_form.save()
-                messages.success(request, 'Ваш профиль обновлён.')
-                return redirect('users:profile')
-            else:
-                # Если форма профиля не валидна, отображаем её с ошибками
-                password_form = ChangePasswordForm()
-                context = {
-                    'form': profile_form,
-                    'password_form': password_form,
-                }
-                return render(request, 'users/profile.html', context)
-    else:
-        profile_form = ProfileEditForm(instance=request.user)
-        password_form = ChangePasswordForm()
-        context = {
-            'form': profile_form,
-            'password_form': password_form,
-        }
-        return render(request, 'users/profile.html', context)
-
-
-# Для обратной совместимости (если где-то используется старое имя)
-profile_edit = profile
-profile_password = profile
 
 
 @login_required
 @admin_required
 def user_change_password(request, user_id):
+    """
+    Смена пароля пользователя администратором (без ввода старого пароля).
+    """
     user = get_object_or_404(User, id=user_id)
     if request.method == 'POST':
         form = ChangePasswordForm(request.POST)
@@ -234,10 +304,82 @@ def user_change_password(request, user_id):
     return render(request, 'users/user_change_password.html', {'form': form, 'user': user})
 
 
-# ---------- Группы ----------
+# ----------------------------------------------------------------------
+# Личный кабинет (профиль)
+# ----------------------------------------------------------------------
+
+@login_required
+def profile(request):
+    """
+    Единая страница профиля пользователя.
+    Включает:
+    - редактирование личных данных (имя, email, телефон, должность, аватар);
+    - смену пароля;
+    - просмотр статистики активности и истории входов.
+    """
+    if request.method == 'POST':
+        # Если в POST передан флаг change_password — обрабатываем смену пароля
+        if 'change_password' in request.POST:
+            password_form = ChangePasswordForm(request.POST)
+            if password_form.is_valid():
+                request.user.set_password(password_form.cleaned_data['password'])
+                request.user.save()
+                messages.success(request, 'Пароль изменён. Пожалуйста, войдите заново.')
+                return redirect('login')
+            else:
+                # Если форма пароля невалидна, показываем страницу с ошибками
+                profile_form = ProfileEditForm(instance=request.user)
+                context = get_profile_context(request.user)
+                context.update({
+                    'form': profile_form,
+                    'password_form': password_form,
+                })
+                return render(request, 'users/profile.html', context)
+        else:
+            # Иначе — редактирование профиля
+            profile_form = ProfileEditForm(
+                request.POST,
+                request.FILES,
+                instance=request.user
+            )
+            if profile_form.is_valid():
+                profile_form.save()
+                messages.success(request, 'Ваш профиль обновлён.')
+                return redirect('users:profile')
+            else:
+                # Если форма профиля невалидна, показываем её с ошибками
+                password_form = ChangePasswordForm()
+                context = get_profile_context(request.user)
+                context.update({
+                    'form': profile_form,
+                    'password_form': password_form,
+                })
+                return render(request, 'users/profile.html', context)
+
+    # GET-запрос: просто показываем формы и статистику
+    profile_form = ProfileEditForm(instance=request.user)
+    password_form = ChangePasswordForm()
+    context = get_profile_context(request.user)
+    context.update({
+        'form': profile_form,
+        'password_form': password_form,
+    })
+    return render(request, 'users/profile.html', context)
+
+
+# Для обратной совместимости (если где-то используются старые имена)
+profile_edit = profile
+profile_password = profile
+
+
+# ----------------------------------------------------------------------
+# Управление группами
+# ----------------------------------------------------------------------
+
 @login_required
 @admin_required
 def group_list(request):
+    """Список всех групп с количеством пользователей в каждой."""
     groups = Group.objects.annotate(user_count=Count('user')).all()
     return render(request, 'users/group_list.html', {'groups': groups})
 
@@ -245,6 +387,7 @@ def group_list(request):
 @login_required
 @admin_required
 def group_create(request):
+    """Создание новой группы с выбором прав (permissions)."""
     if request.method == 'POST':
         form = GroupForm(request.POST)
         if form.is_valid():
@@ -260,6 +403,7 @@ def group_create(request):
 @login_required
 @admin_required
 def group_edit(request, group_id):
+    """Редактирование существующей группы."""
     group = get_object_or_404(Group, id=group_id)
     if request.method == 'POST':
         form = GroupForm(request.POST, instance=group)
@@ -270,12 +414,17 @@ def group_edit(request, group_id):
             return redirect('users:group_list')
     else:
         form = GroupForm(instance=group)
-    return render(request, 'users/group_form.html', {'form': form, 'is_edit': True, 'group': group})
+    return render(request, 'users/group_form.html', {
+        'form': form,
+        'is_edit': True,
+        'group': group,
+    })
 
 
 @login_required
 @admin_required
 def group_delete(request, group_id):
+    """Удаление группы (с подтверждением)."""
     group = get_object_or_404(Group, id=group_id)
     if request.method == 'POST':
         group.delete()
@@ -284,20 +433,55 @@ def group_delete(request, group_id):
     return render(request, 'users/group_confirm_delete.html', {'group': group})
 
 
-# ---------- Справочник ролей ----------
+# ----------------------------------------------------------------------
+# Справочник ролей
+# ----------------------------------------------------------------------
+
 @login_required
 @admin_required
 def role_help(request):
+    """
+    Справочная страница с описанием всех ролей и их прав
+    в различных приложениях системы.
+    """
     roles_info = [
-        {'code': 'ADMIN', 'name': 'Администратор',
-         'description': 'Полный доступ ко всем функциям системы: пользователи, договоры, заявки, счётчики, отчёты.'},
-        {'code': 'CONTRACT_SPECIALIST', 'name': 'Специалист по договорам',
-         'description': 'Управление договорами и счётчиками (создание, редактирование, просмотр). Нет доступа к заявкам.'},
-        {'code': 'ENGINEER', 'name': 'Инженер',
-         'description': 'Просмотр договоров, полный доступ к заявкам, управление счётчиками.'},
-        {'code': 'DISPATCHER', 'name': 'Диспетчер',
-         'description': 'Полный доступ к заявкам (создание, назначение, закрытие). Без доступа к договорам и счётчикам.'},
-        {'code': 'WORKER', 'name': 'Рабочий',
-         'description': 'Доступ только к назначенным на него заявкам (просмотр, выполнение).'},
+        {
+            'code': 'ADMIN',
+            'name': 'Администратор',
+            'description': (
+                'Полный доступ ко всем функциям системы: '
+                'пользователи, договоры, заявки, счётчики, отчёты.'
+            ),
+        },
+        {
+            'code': 'CONTRACT_SPECIALIST',
+            'name': 'Специалист по договорам',
+            'description': (
+                'Управление договорами и счётчиками (создание, редактирование, просмотр). '
+                'Нет доступа к заявкам.'
+            ),
+        },
+        {
+            'code': 'ENGINEER',
+            'name': 'Инженер',
+            'description': (
+                'Просмотр договоров, полный доступ к заявкам, управление счётчиками.'
+            ),
+        },
+        {
+            'code': 'DISPATCHER',
+            'name': 'Диспетчер',
+            'description': (
+                'Полный доступ к заявкам (создание, назначение, закрытие). '
+                'Без доступа к договорам и счётчикам.'
+            ),
+        },
+        {
+            'code': 'WORKER',
+            'name': 'Рабочий',
+            'description': (
+                'Доступ только к назначенным на него заявкам (просмотр, выполнение).'
+            ),
+        },
     ]
     return render(request, 'users/role_help.html', {'roles_info': roles_info})

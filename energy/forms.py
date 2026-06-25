@@ -20,7 +20,7 @@ class MeterForm(forms.ModelForm):
         model = Meter
         fields = [
             'serial_number', 'resource_type', 'is_multi_tariff',
-            'location', 'transformation_ratio', 'initial_value'
+            'location', 'transformation_ratio', 'initial_value', 'is_technical'
         ]
         widgets = {
             'serial_number': forms.TextInput(attrs={'class': 'form-control'}),
@@ -29,6 +29,7 @@ class MeterForm(forms.ModelForm):
             'location': forms.TextInput(attrs={'class': 'form-control'}),
             'transformation_ratio': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.001', 'min': '0.001'}),
             'initial_value': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.001'}),
+            'is_technical': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
         labels = {
             'serial_number': 'Серийный номер / Название счётчика',
@@ -37,10 +38,12 @@ class MeterForm(forms.ModelForm):
             'location': 'Местоположение',
             'transformation_ratio': 'Коэффициент трансформации',
             'initial_value': 'Начальное показание',
+            'is_technical': 'Технический учёт',
         }
         help_texts = {
             'transformation_ratio': 'Для воды и тепла оставьте 1. Для электроэнергии укажите коэффициент (например, 20).',
             'initial_value': 'Начальное показание счётчика. Для многотарифных – начальные зоны задаются в админке.',
+            'is_technical': 'Отметьте, если показания этого счётчика не должны учитываться в общих отчётах.',
         }
 
     def __init__(self, user, *args, **kwargs):

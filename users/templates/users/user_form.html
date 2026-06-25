@@ -11,36 +11,32 @@
     </div>
     <div class="card shadow-sm">
         <div class="card-body">
-            <form method="post" novalidate enctype="multipart/form-data">
+            <form method="post" novalidate>
                 {% csrf_token %}
+                {% if user_form.non_field_errors %}
+                    <div class="alert alert-danger">{{ user_form.non_field_errors }}</div>
+                {% endif %}
+                {% if profile_form.non_field_errors %}
+                    <div class="alert alert-danger">{{ profile_form.non_field_errors }}</div>
+                {% endif %}
 
-                <!-- Блок: основная информация (User) -->
                 <h5 class="mb-3 border-bottom pb-2">Основная информация</h5>
                 {% for field in user_form %}
                     <div class="mb-3">
                         {{ field.label_tag }}
                         {{ field }}
-                        {% if field.help_text %}
-                            <div class="form-text text-muted small">{{ field.help_text|safe }}</div>
-                        {% endif %}
-                        {% if field.errors %}
-                            <div class="invalid-feedback d-block">{{ field.errors }}</div>
-                        {% endif %}
+                        {% if field.help_text %}<div class="form-text text-muted small">{{ field.help_text|safe }}</div>{% endif %}
+                        {% if field.errors %}<div class="invalid-feedback d-block">{{ field.errors }}</div>{% endif %}
                     </div>
                 {% endfor %}
 
-                <!-- Блок: профиль (роль, телефон, должность) -->
                 <h5 class="mt-4 mb-3 border-bottom pb-2">Профиль</h5>
                 {% for field in profile_form %}
                     <div class="mb-3">
                         {{ field.label_tag }}
                         {{ field }}
-                        {% if field.help_text %}
-                            <div class="form-text text-muted small">{{ field.help_text|safe }}</div>
-                        {% endif %}
-                        {% if field.errors %}
-                            <div class="invalid-feedback d-block">{{ field.errors }}</div>
-                        {% endif %}
+                        {% if field.help_text %}<div class="form-text text-muted small">{{ field.help_text|safe }}</div>{% endif %}
+                        {% if field.errors %}<div class="invalid-feedback d-block">{{ field.errors }}</div>{% endif %}
                         {% if field.name == 'role' %}
                             <div id="roleHelpText" class="form-text text-muted mt-1"></div>
                             <a href="{% url 'users:role_help' %}" target="_blank" class="small">Что означают роли?</a>
@@ -58,21 +54,19 @@
 </div>
 
 <script>
-    // Описания ролей (новые)
     const roleDescriptions = {
-        'ADMIN': '🔹 Администратор — полный доступ ко всем функциям системы: управление пользователями, группами, договорами, отчётами, настройками.',
-        'CONTRACT_SPECIALIST': '🔹 Специалист по договорам — управление договорами и счётчиками (создание, редактирование, просмотр). Нет доступа к заявкам.',
+        'ADMIN': '🔹 Администратор — полный доступ ко всем функциям системы.',
+        'CONTRACT_SPECIALIST': '🔹 Специалист по договорам — управление договорами и счётчиками.',
         'ENGINEER': '🔹 Инженер — просмотр договоров, полный доступ к заявкам, управление счётчиками.',
-        'DISPATCHER': '🔹 Диспетчер — полный доступ к заявкам (создание, назначение, закрытие). Без доступа к договорам и счётчикам.',
-        'WORKER': '🔹 Рабочий — доступ только к назначенным на него заявкам (просмотр, выполнение).'
+        'DISPATCHER': '🔹 Диспетчер — полный доступ к заявкам.',
+        'WORKER': '🔹 Рабочий — доступ только к назначенным заявкам.'
     };
     document.addEventListener('DOMContentLoaded', function() {
         const roleSelect = document.querySelector('select[name="role"]');
         const roleHelpDiv = document.getElementById('roleHelpText');
         if (roleSelect && roleHelpDiv) {
             function updateRoleDescription() {
-                const selected = roleSelect.value;
-                roleHelpDiv.innerHTML = roleDescriptions[selected] || '';
+                roleHelpDiv.innerHTML = roleDescriptions[roleSelect.value] || '';
             }
             roleSelect.addEventListener('change', updateRoleDescription);
             updateRoleDescription();

@@ -9,29 +9,27 @@ from django.shortcuts import render, redirect
 from django.utils import timezone
 from django.db.models import Q, Count, Avg, F
 from django.db.models.functions import TruncDay, TruncMonth
+from django.core.cache import cache
 
 from ..models import ServiceRequest
 
 
 def get_dashboard_context(year=None, month=None):
-    """
-    Возвращает контекст для дашборда заявок с оптимизированными запросами.
-    Параметры:
-        year  - год (по умолчанию текущий)
-        month - месяц (по умолчанию текущий)
-    Используется как в старом представлении request_dashboard, так и в общем дашборде.
-    """
     if year is None:
         year = date.today().year
     if month is None:
         month = date.today().month
+
+    cache_key = f'dashboard_context_{year}_{month}'
+    context = cache.get(cache_key)
+    if context is not None:
+        return context
 
     qs = ServiceRequest.objects.filter(
         created_at__year=year,
         created_at__month=month
     )
 
-    # 1. KPI – один агрегат
     stats = qs.aggregate(
         total_requests=Count('id'),
         completed_closed=Count('id', filter=Q(status__in=['completed', 'closed'])),
@@ -44,44 +42,37 @@ def get_dashboard_context(year=None, month=None):
     overdue = stats['overdue']
     completion_rate = round(completed_closed / total_requests * 100, 1) if total_requests else 0
 
-    # 2. Динамика по дням – TruncDay
     daily_stats = qs.annotate(day=TruncDay('created_at')).values('day').annotate(cnt=Count('id')).order_by('day')
     day_created = {d['day'].day: d['cnt'] for d in daily_stats}
     num_days = calendar.monthrange(year, month)[1]
     days_list = list(range(1, num_days + 1))
     day_created_list = [day_created.get(d, 0) for d in days_list]
 
-    # Динамика по дням для завершённых
     completed_qs = qs.filter(status__in=['completed', 'closed'], completed_date__isnull=False)
     daily_completed = completed_qs.annotate(day=TruncDay('completed_date')).values('day').annotate(cnt=Count('id')).order_by('day')
     day_completed_dict = {d['day'].day: d['cnt'] for d in daily_completed}
     day_completed_list = [day_completed_dict.get(d, 0) for d in days_list]
 
-    # 3. Месячная динамика за год
     year_qs = ServiceRequest.objects.filter(created_at__year=year)
     month_stats = year_qs.annotate(month=TruncMonth('created_at')).values('month').annotate(cnt=Count('id')).order_by('month')
     month_map = {m['month'].month: m['cnt'] for m in month_stats}
     monthly_created = [month_map.get(m, 0) for m in range(1, 13)]
     month_labels = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек']
 
-    # 4. Распределение по статусам
     status_counts = qs.values('status').annotate(cnt=Count('id')).order_by('status')
     status_dict = dict(ServiceRequest.STATUS_CHOICES)
     status_labels = [status_dict.get(s['status'], s['status']) for s in status_counts]
     status_data = [s['cnt'] for s in status_counts]
 
-    # 5. Типы заявок (топ-5)
     type_counts = qs.values('request_type__name').annotate(cnt=Count('id')).order_by('-cnt')[:5]
     type_labels = [t['request_type__name'] or 'Без типа' for t in type_counts]
     type_data = [t['cnt'] for t in type_counts]
 
-    # 6. Приоритеты
     priority_counts = qs.values('priority').annotate(cnt=Count('id')).order_by('priority')
     priority_dict = dict(ServiceRequest.PRIORITY_CHOICES)
     priority_labels = [priority_dict.get(p['priority'], p['priority']) for p in priority_counts]
     priority_data = [p['cnt'] for p in priority_counts]
 
-    # 7. Топ-5 исполнителей (по назначенным заявкам)
     executor_qs = qs.select_related('assigned_to').prefetch_related('assignees__user')
     executor_counts = {}
     for req in executor_qs:
@@ -93,7 +84,6 @@ def get_dashboard_context(year=None, month=None):
     sorted_executors = sorted(executor_counts.items(), key=lambda x: x[1], reverse=True)[:5]
     assignee_list = [{'name': u.get_full_name() or u.username, 'total': c} for u, c in sorted_executors]
 
-    # 8. Топ-3 исполнителей для графика загрузки по дням
     top_users = [u for u, _ in sorted_executors[:3]]
     assignee_daily = []
     for user_obj in top_users:
@@ -107,14 +97,12 @@ def get_dashboard_context(year=None, month=None):
             'data': daily_counts
         })
 
-    # 9. Среднее время выполнения – используем F выражения
     completed_reqs = qs.filter(status__in=['completed', 'closed'], completed_date__isnull=False)
     avg_seconds = completed_reqs.aggregate(
         avg=Avg(F('completed_date') - F('created_at'))
     )['avg']
     avg_hours = (avg_seconds.total_seconds() / 3600) if avg_seconds else 0
 
-    # 10. Эффективность сотрудников (роль WORKER)
     worker_ids = qs.filter(assigned_to__isnull=False).values_list('assigned_to', flat=True).distinct()
     worker_stats = []
     total_completed_closed = completed_closed
@@ -139,7 +127,6 @@ def get_dashboard_context(year=None, month=None):
         })
     worker_stats.sort(key=lambda x: x['completed'], reverse=True)
 
-    # 11. Просроченные заявки по исполнителям
     today = date.today()
     overdue_requests_qs = ServiceRequest.objects.filter(
         planned_date__lt=today,
@@ -162,7 +149,6 @@ def get_dashboard_context(year=None, month=None):
         for u, c in sorted(overdue_count.items(), key=lambda x: x[1], reverse=True)
     ]
 
-    # Справочные данные для фильтра
     month_names_ru = {
         1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель',
         5: 'Май', 6: 'Июнь', 7: 'Июль', 8: 'Август',
@@ -199,4 +185,5 @@ def get_dashboard_context(year=None, month=None):
         'worker_stats': worker_stats,
         'overdue_assignee_stats': overdue_assignee_stats,
     }
+    cache.set(cache_key, context, 60*5)  # 5 минут
     return context

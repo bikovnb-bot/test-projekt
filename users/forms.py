@@ -1,21 +1,13 @@
-# users/forms.py
-
 from django import forms
 from django.contrib.auth.models import User, Group, Permission
 from django.contrib.auth.password_validation import validate_password
 from .models import UserRole, Profile
 
-# ------------------------------------------------------------
-# Форма фильтрации списка пользователей
-# ------------------------------------------------------------
 class UserFilterForm(forms.Form):
     search = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Поиск...'}))
     role = forms.ChoiceField(required=False, choices=[('', 'Все роли')] + list(UserRole.choices), widget=forms.Select(attrs={'class': 'form-select'}))
     is_active = forms.ChoiceField(required=False, choices=[('', 'Все'), ('active', 'Активные'), ('inactive', 'Неактивные')], widget=forms.Select(attrs={'class': 'form-select'}))
 
-# ------------------------------------------------------------
-# Форма смены пароля (для администратора, без старого пароля)
-# ------------------------------------------------------------
 class ChangePasswordForm(forms.Form):
     password = forms.CharField(label='Новый пароль', widget=forms.PasswordInput(attrs={'class': 'form-control'}), validators=[validate_password])
     password_confirm = forms.CharField(label='Подтверждение пароля', widget=forms.PasswordInput(attrs={'class': 'form-control'}))
@@ -27,9 +19,6 @@ class ChangePasswordForm(forms.Form):
             raise forms.ValidationError('Пароли не совпадают')
         return cleaned_data
 
-# ------------------------------------------------------------
-# Форма профиля (роль, телефон, должность)
-# ------------------------------------------------------------
 class ProfileForm(forms.ModelForm):
     class Meta:
         model = Profile
@@ -40,9 +29,6 @@ class ProfileForm(forms.ModelForm):
             'position': forms.TextInput(attrs={'class': 'form-control'}),
         }
 
-# ------------------------------------------------------------
-# Форма создания пользователя (только поля User)
-# ------------------------------------------------------------
 class UserCreateForm(forms.ModelForm):
     password = forms.CharField(widget=forms.PasswordInput(attrs={'class': 'form-control'}), validators=[validate_password])
     password_confirm = forms.CharField(widget=forms.PasswordInput(attrs={'class': 'form-control'}))
@@ -68,12 +54,9 @@ class UserCreateForm(forms.ModelForm):
         if commit:
             user.set_password(self.cleaned_data['password'])
             user.save()
-            self.save_m2m()  # сохраняет группы
+            self.save_m2m()
         return user
 
-# ------------------------------------------------------------
-# Форма редактирования пользователя
-# ------------------------------------------------------------
 class UserEditForm(forms.ModelForm):
     class Meta:
         model = User
@@ -87,16 +70,6 @@ class UserEditForm(forms.ModelForm):
             'groups': forms.SelectMultiple(attrs={'class': 'form-select'}),
         }
 
-    def save(self, commit=True):
-        user = super().save(commit=False)
-        if commit:
-            user.save()
-            self.save_m2m()
-        return user
-
-# ------------------------------------------------------------
-# Форма редактирования профиля (самим пользователем)
-# ------------------------------------------------------------
 class ProfileEditForm(forms.ModelForm):
     first_name = forms.CharField(max_length=150, required=False, label='Имя', widget=forms.TextInput(attrs={'class': 'form-control'}))
     last_name = forms.CharField(max_length=150, required=False, label='Фамилия', widget=forms.TextInput(attrs={'class': 'form-control'}))
@@ -138,9 +111,6 @@ class ProfileEditForm(forms.ModelForm):
                 raise forms.ValidationError('Только JPEG, PNG, GIF')
         return avatar
 
-# ------------------------------------------------------------
-# Форма управления группами
-# ------------------------------------------------------------
 class GroupForm(forms.ModelForm):
     permissions = forms.ModelMultipleChoiceField(
         queryset=Permission.objects.select_related('content_type').order_by('content_type__app_label', 'codename'),

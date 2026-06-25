@@ -5,24 +5,179 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    /* Общие адаптивные стили */
+    .bulk-actions-bar {
+        background: #f8f9fa;
+        padding: 10px 15px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .bulk-actions-bar .form-select-sm {
+        width: auto;
+        min-width: 150px;
+    }
+    .table-checkbox {
+        width: 40px;
+        text-align: center;
+    }
+    .bulk-actions-bar .btn {
+        white-space: nowrap;
+    }
+
+    /* Стили для карточек на мобильных */
+    .request-card {
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 12px 15px;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        transition: box-shadow 0.2s;
+    }
+    .request-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .request-card .row-label {
+        font-weight: 600;
+        color: #495057;
+        font-size: 0.85rem;
+    }
+    .request-card .row-value {
+        font-size: 0.95rem;
+        word-break: break-word;
+    }
+    .request-card .action-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+        justify-content: flex-end;
+    }
+    .request-card .action-buttons .btn {
+        padding: 6px 12px;
+        font-size: 0.85rem;
+    }
+    .request-card .status-badge {
+        font-size: 0.85rem;
+        padding: 4px 10px;
+    }
+
+    /* Адаптивные медиа-запросы */
+    @media (max-width: 767.98px) {
+        /* Скрываем таблицу на мобильных, показываем карточки */
+        .table-desktop {
+            display: none;
+        }
+        .cards-mobile {
+            display: block;
+        }
+        .bulk-actions-bar {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
+        }
+        .bulk-actions-bar .form-select-sm {
+            width: 100%;
+        }
+        .bulk-actions-bar .btn {
+            width: 100%;
+        }
+        .filter-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .filter-chips .filter-chip {
+            font-size: 0.8rem;
+            padding: 4px 10px;
+        }
+        .search-group-wrapper .input-group {
+            width: 100%;
+        }
+        .btn-icon-circle {
+            width: 36px;
+            height: 36px;
+            line-height: 36px;
+            font-size: 1rem;
+        }
+        .btn-icon-circle-sm {
+            width: 32px;
+            height: 32px;
+            line-height: 32px;
+            font-size: 0.9rem;
+        }
+        .pagination .page-link {
+            padding: 6px 10px;
+            font-size: 0.85rem;
+        }
+        /* Скрываем некоторые колонки в карточках, если нужно */
+        .request-card .hide-mobile {
+            display: none;
+        }
+    }
+
+    @media (min-width: 768px) {
+        .table-desktop {
+            display: table;
+        }
+        .cards-mobile {
+            display: none;
+        }
+    }
+
+    /* Улучшенные тач-цели */
+    .btn, .filter-chip, .page-link, .btn-icon-circle {
+        touch-action: manipulation;
+    }
+    .btn-sm {
+        padding: 6px 14px;
+    }
+    @media (max-width: 576px) {
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 0.9rem;
+        }
+        .form-control, .form-select {
+            font-size: 16px; /* чтобы не было зума на iOS */
+        }
+        h2 {
+            font-size: 1.5rem;
+        }
+        .container {
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+        .card-body {
+            padding: 10px;
+        }
+    }
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
         <h2 class="fw-semibold"><i class="bi bi-clipboard-check text-primary me-2"></i> Заявки</h2>
-        <div>
-            <a href="{% url 'requests_app:request_create' %}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
-                <i class="bi bi-plus-circle"></i> Новая заявка
-            </a>
-             <a href="{% url 'requests_app:custom_report' %}" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 ms-2">
-                <i class="bi bi-file-earmark-text"></i> Отчёт
-            </a>
-        </div>
+        <div class="d-flex flex-wrap gap-2">
+    <a href="{% url 'requests_app:request_create' %}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+        <i class="bi bi-plus-circle"></i> Новая заявка
+    </a>
+    <a href="{% url 'requests_app:custom_report' %}" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1">
+        <i class="bi bi-file-earmark-text"></i> Отчёт
+    </a>
+    <a href="{% url 'requests_app:material_stock' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+        <i class="bi bi-box-seam"></i> Материалы
+    </a>
+</div>
     </div>
 
     <!-- Быстрые фильтры (чипсы) -->
-    <div class="filter-chips">
+    <div class="filter-chips mb-3">
         <a href="{% url 'requests_app:request_list' %}" class="filter-chip {% if not request.GET.status and not request.GET.priority and not request.GET.overdue and not request.GET.search %}active{% endif %}">Все</a>
         <a href="?status=new" class="filter-chip {% if request.GET.status == 'new' %}active{% endif %}">Новые</a>
         <a href="?status=in_progress" class="filter-chip {% if request.GET.status == 'in_progress' %}active{% endif %}">В работе</a>
@@ -34,9 +189,9 @@
     </div>
 
     <!-- Блок поиска -->
-    <div class="search-group-wrapper">
-        <form method="get" action="{% url 'requests_app:request_list' %}" class="d-inline-block w-auto">
-            <div class="input-group input-group-sm">
+    <div class="search-group-wrapper mb-3">
+        <form method="get" action="{% url 'requests_app:request_list' %}" class="d-flex flex-wrap gap-2">
+            <div class="input-group input-group-sm flex-grow-1">
                 <input type="text" name="search" class="form-control" placeholder="Поиск по заявкам..." value="{{ search_query|default:'' }}">
                 <button type="submit" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1" title="Найти"><i class="bi bi-search"></i></button>
                 <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1 btn-toggle-filter" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFilterCollapse" title="Расширенный фильтр"><i class="bi bi-funnel"></i></button>
@@ -59,7 +214,7 @@
                     {% if request.GET.overdue %}<input type="hidden" name="overdue" value="{{ request.GET.overdue }}">{% endif %}
 
                     <div class="row g-3">
-                        <div class="col-md-4">
+                        <div class="col-12 col-md-4">
                             <label class="form-label">Статус</label>
                             <select name="status" class="form-select form-select-sm">
                                 <option value="">Все</option>
@@ -68,7 +223,7 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-md-4">
                             <label class="form-label">Исполнитель</label>
                             <select name="executor" class="form-select form-select-sm">
                                 <option value="">Все</option>
@@ -77,7 +232,7 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-md-4">
                             <label class="form-label">Приоритет</label>
                             <select name="priority" class="form-select form-select-sm">
                                 <option value="">Все</option>
@@ -86,7 +241,7 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-md-4">
                             <label class="form-label">Здание</label>
                             <select name="building" class="form-select form-select-sm">
                                 <option value="">Все</option>
@@ -95,7 +250,7 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-md-4">
                             <label class="form-label">Тип заявки</label>
                             <select name="request_type" class="form-select form-select-sm">
                                 <option value="">Все</option>
@@ -104,20 +259,20 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-md-4">
                             <label class="form-label">Помещение</label>
                             <input type="text" name="room_number" class="form-control form-control-sm" value="{{ filter_data.room_number|default:'' }}" placeholder="Номер помещения">
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Дата создания с</label>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">Дата с</label>
                             <input type="text" name="date_from" class="form-control form-control-sm datepicker" value="{{ filter_data.date_from }}" placeholder="ДД.ММ.ГГГГ">
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Дата создания по</label>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">Дата по</label>
                             <input type="text" name="date_to" class="form-control form-control-sm datepicker" value="{{ filter_data.date_to }}" placeholder="ДД.ММ.ГГГГ">
                         </div>
                     </div>
-                    <div class="mt-3 d-flex justify-content-center gap-2">
+                    <div class="mt-3 d-flex flex-wrap justify-content-center gap-2">
                         <button type="submit" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">Применить фильтры</button>
                         <a href="{% url 'requests_app:request_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
                             <i class="bi bi-arrow-counterclockwise"></i> Сбросить
@@ -128,18 +283,54 @@
         </div>
     </div>
 
-    <!-- Таблица -->
-    <div class="card card-table">
+    <!-- Панель массовых действий -->
+    <div class="bulk-actions-bar" id="bulkActionsBar" style="display: none;">
+        <span class="fw-semibold me-2">Выбрано: <span id="selectedCount">0</span></span>
+        <select id="bulkStatusSelect" class="form-select form-select-sm">
+            <option value="">Изменить статус...</option>
+            {% for code, name in status_choices %}
+                {% if code != 'closed' and code != 'suspended' %}
+                    <option value="{{ code }}">{{ name }}</option>
+                {% endif %}
+            {% endfor %}
+        </select>
+        <button id="bulkApplyBtn" class="btn btn-sm btn-primary rounded-pill px-3 py-1">Применить</button>
+        <button id="bulkClearBtn" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1">Снять выделение</button>
+    </div>
+
+    <!-- Десктопная таблица -->
+    <div class="table-desktop card card-table">
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-modern table-hover align-middle mb-0 text-center">
                     <thead>
-                        <tr><th>№ заявки</th><th>Здание</th><th>Часть</th><th>Помещение</th><th>Приоритет</th><th>Статус</th><th>Создатель</th><th>Ответственный</th><th>Дата создания</th><th>Действия</th></tr>
+                        <tr>
+                            <th class="table-checkbox">
+                                <input type="checkbox" id="selectAllCheckbox" title="Выбрать все">
+                            </th>
+                            <th>№ заявки</th>
+                            <th>Здание</th>
+                            <th>Часть</th>
+                            <th>Помещение</th>
+                            <th>Приоритет</th>
+                            <th>Статус</th>
+                            <th>Создатель</th>
+                            <th>Ответственный</th>
+                            <th>Дата создания</th>
+                            <th>Действия</th>
+                        </tr>
                     </thead>
                     <tbody>
                         {% for req in requests %}
                         <tr id="row-{{ req.id }}" data-request-id="{{ req.id }}" data-status="{{ req.status }}" data-assigned-to="{{ req.assigned_to.id|default:'' }}">
-                            <td><a href="{% url 'requests_app:request_detail' req.id %}" class="fw-semibold text-decoration-none" data-bs-toggle="tooltip" title="{{ req.description|escape }}">{{ req.request_number }}</a></td>
+                            <td class="table-checkbox">
+                                <input type="checkbox" class="row-checkbox" value="{{ req.id }}">
+                            </td>
+                            <td>
+                                <a href="{% url 'requests_app:request_detail' req.id %}" class="fw-semibold text-decoration-none" title="{{ req.description|striptags|escape }}">
+                                    {{ req.request_number }}
+                                </a>
+                            </td>
                             <td>{{ req.building.name|default:req.building.address|default:"—" }}</td>
                             <td>{{ req.section.name|default:"—" }}</td>
                             <td>{{ req.room_number|default:"—" }}</td>
@@ -180,7 +371,7 @@
                             </td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="10" class="text-muted text-center py-5">Нет заявок</td></tr>
+                        <tr><td colspan="11" class="text-muted text-center py-5">Нет заявок</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -188,10 +379,87 @@
         </div>
     </div>
 
+    <!-- Мобильные карточки -->
+    <div class="cards-mobile">
+        {% for req in requests %}
+        <div class="request-card" id="card-{{ req.id }}" data-request-id="{{ req.id }}" data-status="{{ req.status }}" data-assigned-to="{{ req.assigned_to.id|default:'' }}">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <input type="checkbox" class="row-checkbox" value="{{ req.id }}" style="margin-right: 8px;">
+                    <a href="{% url 'requests_app:request_detail' req.id %}" class="fw-semibold text-decoration-none">
+                        {{ req.request_number }}
+                    </a>
+                </div>
+                <div>
+                    <span class="badge-status 
+                        {% if req.status == 'new' %}bg-secondary
+                        {% elif req.status == 'in_progress' %}bg-primary
+                        {% elif req.status == 'completed' %}bg-success
+                        {% elif req.status == 'closed' %}bg-dark
+                        {% elif req.status == 'suspended' %}bg-warning text-dark{% endif %}">
+                        {{ req.get_status_display }}
+                    </span>
+                </div>
+            </div>
+            <div class="row mt-2">
+                <div class="col-6">
+                    <span class="row-label">Здание:</span>
+                    <span class="row-value">{{ req.building.name|default:req.building.address|default:"—" }}</span>
+                </div>
+                <div class="col-6">
+                    <span class="row-label">Часть:</span>
+                    <span class="row-value">{{ req.section.name|default:"—" }}</span>
+                </div>
+                <div class="col-6">
+                    <span class="row-label">Помещение:</span>
+                    <span class="row-value">{{ req.room_number|default:"—" }}</span>
+                </div>
+                <div class="col-6">
+                    <span class="row-label">Приоритет:</span>
+                    <span class="row-value">
+                        {% if req.priority == 'high' %}
+                            <span class="badge bg-danger rounded-pill">Высокий</span>
+                        {% elif req.priority == 'medium' %}
+                            <span class="badge bg-warning text-dark rounded-pill">Средний</span>
+                        {% else %}
+                            <span class="badge bg-info rounded-pill">Низкий</span>
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="col-6">
+                    <span class="row-label">Создатель:</span>
+                    <span class="row-value">{{ req.get_creator_display }}</span>
+                </div>
+                <div class="col-6">
+                    <span class="row-label">Ответственный:</span>
+                    <span class="row-value">{% if req.assigned_to %}{{ req.assigned_to.get_full_name|default:req.assigned_to.username }}{% else %}—{% endif %}</span>
+                </div>
+                <div class="col-12">
+                    <span class="row-label">Дата создания:</span>
+                    <span class="row-value">{{ req.created_at|date:"d.m.Y H:i" }}</span>
+                </div>
+            </div>
+            <div class="action-buttons">
+                <a href="{% url 'requests_app:request_detail' req.id %}" class="btn btn-outline-primary btn-sm rounded-pill px-2 py-1">
+                    <i class="bi bi-eye"></i> Просмотр
+                </a>
+                <a href="{% url 'requests_app:request_edit' req.id %}" class="btn btn-outline-warning btn-sm rounded-pill px-2 py-1">
+                    <i class="bi bi-pencil"></i> Ред.
+                </a>
+                <a href="{% url 'requests_app:request_delete' req.id %}" class="btn btn-outline-danger btn-sm rounded-pill px-2 py-1" onclick="return confirm('Удалить заявку {{ req.request_number }}?')">
+                    <i class="bi bi-trash"></i> Уд.
+                </a>
+            </div>
+        </div>
+        {% empty %}
+        <div class="text-muted text-center py-5">Нет заявок</div>
+        {% endfor %}
+    </div>
+
     <!-- Пагинация -->
     {% if page_obj and page_obj.has_other_pages %}
     <nav class="mt-4">
-        <ul class="pagination pagination-modern justify-content-center">
+        <ul class="pagination pagination-modern justify-content-center flex-wrap">
             {% if page_obj.has_previous %}
             <li class="page-item">
                 <a class="page-link" href="?page=1{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
@@ -231,8 +499,8 @@
 
 </div>
 
-<!-- Контекстное меню для строки -->
-<div id="status-context-menu" class="custom-context-menu" style="display: none;">
+<!-- Контекстное меню для строки (скрыто на мобильных) -->
+<div id="status-context-menu" class="custom-context-menu d-none d-md-block" style="display: none;">
     <div id="menu-assign" style="display: none;"><a href="#" class="menu-item" data-action="assign"><i class="bi bi-person-plus me-2"></i> Назначить исполнителя</a></div>
     <div id="menu-complete" style="display: none;"><a href="#" class="menu-item" data-action="complete"><i class="bi bi-check-circle me-2"></i> Отметить выполненной</a></div>
     <div id="menu-suspend" style="display: none;"><a href="#" class="menu-item" data-action="suspend"><i class="bi bi-pause-circle me-2"></i> Приостановить</a></div>
@@ -268,6 +536,7 @@
 </div>
 
 {{ all_users|json_script:"all-users-data" }}
+
 <script>
     (function() {
         const userRole = "{{ user_role|default:'VIEWER' }}";
@@ -295,170 +564,262 @@
             });
         }
 
-        function getAvailableActions(status, assignedTo) {
-            if (userRole === 'ADMIN') {
-                if (status === 'closed') return ['resume'];
-                const actions = [];
-                if (status === 'new' || status === 'in_progress') actions.push('assign');
-                if (status === 'in_progress') actions.push('complete', 'suspend');
-                if (status === 'suspended') actions.push('resume');
-                if (status === 'completed') actions.push('close');
-                return actions;
-            }
-            const isManagerDispatcher = ['ENGINEER', 'DISPATCHER'].includes(userRole);
-            const isExecutor = (assignedTo && assignedTo == currentUserId);
-            if (isManagerDispatcher) {
-                const actions = [];
-                if (status === 'new' || status === 'in_progress') actions.push('assign');
-                if (status === 'in_progress') actions.push('complete', 'suspend');
-                if (status === 'suspended') actions.push('resume');
-                if (status === 'completed') actions.push('close');
-                return actions;
-            }
-            if (status === 'in_progress' && isExecutor) return ['complete', 'suspend'];
-            return [];
-        }
+        // ===== ЧЕКБОКСЫ И МАССОВЫЕ ДЕЙСТВИЯ =====
+        const checkboxes = document.querySelectorAll('.row-checkbox');
+        const selectAll = document.getElementById('selectAllCheckbox');
+        const bulkBar = document.getElementById('bulkActionsBar');
+        const selectedCountSpan = document.getElementById('selectedCount');
+        const bulkStatusSelect = document.getElementById('bulkStatusSelect');
+        const bulkApplyBtn = document.getElementById('bulkApplyBtn');
+        const bulkClearBtn = document.getElementById('bulkClearBtn');
 
-        function showMenu(row, mouseX, mouseY) {
-            const requestId = row.getAttribute('data-request-id');
-            if (!requestId) return;
-            activeRequestId = requestId;
-            const status = row.getAttribute('data-status');
-            const assignedTo = row.getAttribute('data-assigned-to') || '';
-            const actions = getAvailableActions(status, assignedTo);
-            
-            document.querySelectorAll('#status-context-menu > div').forEach(div => div.style.display = 'none');
-            if (actions.includes('assign')) document.getElementById('menu-assign').style.display = 'block';
-            if (actions.includes('complete')) document.getElementById('menu-complete').style.display = 'block';
-            if (actions.includes('suspend')) document.getElementById('menu-suspend').style.display = 'block';
-            if (actions.includes('resume')) document.getElementById('menu-resume').style.display = 'block';
-            if (actions.includes('close')) document.getElementById('menu-close').style.display = 'block';
-            
-            if (actions.length) {
-                menu.style.display = 'block';
-                let left = mouseX + 5;
-                let top = mouseY;
-                const menuRect = menu.getBoundingClientRect();
-                if (left + menuRect.width > window.innerWidth) left = mouseX - menuRect.width - 5;
-                if (top + menuRect.height > window.innerHeight) top = mouseY - menuRect.height;
-                if (left < 0) left = 5;
-                if (top < 0) top = 5;
-                menu.style.left = left + 'px';
-                menu.style.top = top + 'px';
+        function updateBulkBar() {
+            const checked = document.querySelectorAll('.row-checkbox:checked');
+            const count = checked.length;
+            selectedCountSpan.textContent = count;
+            if (count > 0) {
+                bulkBar.style.display = 'flex';
             } else {
-                menu.style.display = 'none';
+                bulkBar.style.display = 'none';
+            }
+            if (selectAll) {
+                const total = document.querySelectorAll('.row-checkbox').length;
+                selectAll.checked = (count === total && total > 0);
             }
         }
 
-        function hideMenu() { menu.style.display = 'none'; }
+        checkboxes.forEach(cb => {
+            cb.addEventListener('change', updateBulkBar);
+        });
 
-        function assignExecutor(requestId, userId) {
-            if (!userId) return alert('Выберите исполнителя');
-            fetch(`/requests/${requestId}/assign/`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
-                body: `assigned_to=${userId}`
-            }).then(r => r.json()).then(data => {
-                if (data.success) {
-                    const row = document.querySelector(`tr[data-request-id="${requestId}"]`);
-                    if (row) {
-                        row.setAttribute('data-status', 'in_progress');
-                        const badge = row.querySelector('.badge-status');
-                        if (badge) {
-                            badge.className = 'badge-status bg-primary';
-                            badge.textContent = 'В работе';
-                        }
-                        const assignedCell = row.querySelector(`.assigned-to-name-${requestId}`);
-                        if (assignedCell) {
-                            const user = allUsers.find(u => u.id == userId);
-                            assignedCell.textContent = user ? (user.first_name + ' ' + user.last_name).trim() || user.username : '—';
-                        }
-                    }
-                    if (assignModal) assignModal.hide();
-                } else alert(data.message || 'Ошибка');
-            }).catch(() => alert('Ошибка соединения'));
+        if (selectAll) {
+            selectAll.addEventListener('change', function() {
+                document.querySelectorAll('.row-checkbox').forEach(cb => {
+                    cb.checked = this.checked;
+                });
+                updateBulkBar();
+            });
         }
 
-        document.querySelectorAll('tbody tr').forEach(row => {
-            row.addEventListener('contextmenu', e => {
-                e.preventDefault();
-                showMenu(row, e.clientX, e.clientY);
+        if (bulkClearBtn) {
+            bulkClearBtn.addEventListener('click', function() {
+                document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
+                updateBulkBar();
             });
-        });
+        }
 
-        document.addEventListener('click', e => {
-            if (assignModalEl && assignModalEl.contains(e.target)) return;
-            if (menu && !menu.contains(e.target)) hideMenu();
-        });
-        window.addEventListener('scroll', hideMenu);
-        window.addEventListener('resize', hideMenu);
-
-        document.querySelectorAll('.menu-item').forEach(item => {
-            item.addEventListener('click', e => {
-                e.preventDefault();
-                const action = item.dataset.action;
-                if (!activeRequestId) return;
-                if (action === 'assign') {
-                    if (assignModal) assignModal.show();
-                    hideMenu();
+        if (bulkApplyBtn) {
+            bulkApplyBtn.addEventListener('click', function() {
+                const selected = [];
+                document.querySelectorAll('.row-checkbox:checked').forEach(cb => {
+                    selected.push(cb.value);
+                });
+                if (selected.length === 0) {
+                    alert('Выберите хотя бы одну заявку.');
                     return;
                 }
-                const urls = {
-                    'complete': `/requests/${activeRequestId}/complete/`,
-                    'suspend': `/requests/${activeRequestId}/suspend/`,
-                    'resume': `/requests/${activeRequestId}/resume/`,
-                    'close': `/requests/${activeRequestId}/close/`
-                };
-                const url = urls[action];
-                if (!url) return;
-                if (action === 'suspend') {
-                    const reason = prompt('Введите причину приостановки:');
-                    if (reason && reason.trim()) {
-                        const form = document.createElement('form');
-                        form.method = 'POST';
-                        form.action = url;
-                        form.innerHTML = `<input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}"><input type="hidden" name="suspension_reason" value="${reason.trim()}">`;
-                        document.body.appendChild(form);
-                        form.submit();
+                const newStatus = bulkStatusSelect.value;
+                if (!newStatus) {
+                    alert('Выберите статус.');
+                    return;
+                }
+                if (!confirm(`Изменить статус на "${newStatus}" для ${selected.length} заявок?`)) return;
+
+                const formData = new URLSearchParams();
+                selected.forEach(id => formData.append('request_ids[]', id));
+                formData.append('new_status', newStatus);
+
+                fetch("{% url 'requests_app:bulk_status_update' %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        location.reload();
+                    } else {
+                        alert('Ошибка: ' + data.message);
                     }
-                } else if (action === 'complete' || action === 'resume') {
-                    fetch(url, {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest' }
-                    }).then(r => r.json()).then(data => {
-                        if (data.success) {
-                            const row = document.querySelector(`tr[data-request-id="${activeRequestId}"]`);
-                            if (row) {
-                                if (action === 'complete') {
-                                    row.setAttribute('data-status', 'completed');
-                                    const badge = row.querySelector('.badge-status');
-                                    if (badge) {
-                                        badge.className = 'badge-status bg-success';
-                                        badge.textContent = 'Выполнена';
-                                    }
-                                } else {
-                                    row.setAttribute('data-status', 'in_progress');
-                                    const badge = row.querySelector('.badge-status');
-                                    if (badge) {
-                                        badge.className = 'badge-status bg-primary';
-                                        badge.textContent = 'В работе';
+                })
+                .catch(error => alert('Ошибка соединения: ' + error));
+            });
+        }
+
+        updateBulkBar();
+
+        // ===== КОНТЕКСТНОЕ МЕНЮ (только для десктопа) =====
+        if (window.innerWidth >= 768) {
+            function getAvailableActions(status, assignedTo) {
+                if (userRole === 'ADMIN') {
+                    if (status === 'closed') return ['resume'];
+                    const actions = [];
+                    if (status === 'new' || status === 'in_progress') actions.push('assign');
+                    if (status === 'in_progress') actions.push('complete', 'suspend');
+                    if (status === 'suspended') actions.push('resume');
+                    if (status === 'completed') actions.push('close');
+                    return actions;
+                }
+                const isManagerDispatcher = ['ENGINEER', 'DISPATCHER'].includes(userRole);
+                const isExecutor = (assignedTo && assignedTo == currentUserId);
+                if (isManagerDispatcher) {
+                    const actions = [];
+                    if (status === 'new' || status === 'in_progress') actions.push('assign');
+                    if (status === 'in_progress') actions.push('complete', 'suspend');
+                    if (status === 'suspended') actions.push('resume');
+                    if (status === 'completed') actions.push('close');
+                    return actions;
+                }
+                if (status === 'in_progress' && isExecutor) return ['complete', 'suspend'];
+                return [];
+            }
+
+            function showMenu(row, mouseX, mouseY) {
+                const requestId = row.getAttribute('data-request-id');
+                if (!requestId) return;
+                activeRequestId = requestId;
+                const status = row.getAttribute('data-status');
+                const assignedTo = row.getAttribute('data-assigned-to') || '';
+                const actions = getAvailableActions(status, assignedTo);
+                
+                document.querySelectorAll('#status-context-menu > div').forEach(div => div.style.display = 'none');
+                if (actions.includes('assign')) document.getElementById('menu-assign').style.display = 'block';
+                if (actions.includes('complete')) document.getElementById('menu-complete').style.display = 'block';
+                if (actions.includes('suspend')) document.getElementById('menu-suspend').style.display = 'block';
+                if (actions.includes('resume')) document.getElementById('menu-resume').style.display = 'block';
+                if (actions.includes('close')) document.getElementById('menu-close').style.display = 'block';
+                
+                if (actions.length) {
+                    menu.style.display = 'block';
+                    let left = mouseX + 5;
+                    let top = mouseY;
+                    const menuRect = menu.getBoundingClientRect();
+                    if (left + menuRect.width > window.innerWidth) left = mouseX - menuRect.width - 5;
+                    if (top + menuRect.height > window.innerHeight) top = mouseY - menuRect.height;
+                    if (left < 0) left = 5;
+                    if (top < 0) top = 5;
+                    menu.style.left = left + 'px';
+                    menu.style.top = top + 'px';
+                } else {
+                    menu.style.display = 'none';
+                }
+            }
+
+            function hideMenu() { menu.style.display = 'none'; }
+
+            function assignExecutor(requestId, userId) {
+                if (!userId) return alert('Выберите исполнителя');
+                fetch(`/requests/${requestId}/assign/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                    body: `assigned_to=${userId}`
+                }).then(r => r.json()).then(data => {
+                    if (data.success) {
+                        const row = document.querySelector(`tr[data-request-id="${requestId}"]`);
+                        if (row) {
+                            row.setAttribute('data-status', 'in_progress');
+                            const badge = row.querySelector('.badge-status');
+                            if (badge) {
+                                badge.className = 'badge-status bg-primary';
+                                badge.textContent = 'В работе';
+                            }
+                            const assignedCell = row.querySelector(`.assigned-to-name-${requestId}`);
+                            if (assignedCell) {
+                                const user = allUsers.find(u => u.id == userId);
+                                assignedCell.textContent = user ? (user.first_name + ' ' + user.last_name).trim() || user.username : '—';
+                            }
+                        }
+                        if (assignModal) assignModal.hide();
+                    } else alert(data.message || 'Ошибка');
+                }).catch(() => alert('Ошибка соединения'));
+            }
+
+            document.querySelectorAll('tbody tr').forEach(row => {
+                row.addEventListener('contextmenu', e => {
+                    e.preventDefault();
+                    showMenu(row, e.clientX, e.clientY);
+                });
+            });
+
+            document.addEventListener('click', e => {
+                if (assignModalEl && assignModalEl.contains(e.target)) return;
+                if (menu && !menu.contains(e.target)) hideMenu();
+            });
+            window.addEventListener('scroll', hideMenu);
+            window.addEventListener('resize', hideMenu);
+
+            document.querySelectorAll('.menu-item').forEach(item => {
+                item.addEventListener('click', e => {
+                    e.preventDefault();
+                    const action = item.dataset.action;
+                    if (!activeRequestId) return;
+                    if (action === 'assign') {
+                        if (assignModal) assignModal.show();
+                        hideMenu();
+                        return;
+                    }
+                    const urls = {
+                        'complete': `/requests/${activeRequestId}/complete/`,
+                        'suspend': `/requests/${activeRequestId}/suspend/`,
+                        'resume': `/requests/${activeRequestId}/resume/`,
+                        'close': `/requests/${activeRequestId}/close/`
+                    };
+                    const url = urls[action];
+                    if (!url) return;
+                    if (action === 'suspend') {
+                        const reason = prompt('Введите причину приостановки:');
+                        if (reason && reason.trim()) {
+                            const form = document.createElement('form');
+                            form.method = 'POST';
+                            form.action = url;
+                            form.innerHTML = `<input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}"><input type="hidden" name="suspension_reason" value="${reason.trim()}">`;
+                            document.body.appendChild(form);
+                            form.submit();
+                        }
+                    } else if (action === 'complete' || action === 'resume') {
+                        fetch(url, {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest' }
+                        }).then(r => r.json()).then(data => {
+                            if (data.success) {
+                                const row = document.querySelector(`tr[data-request-id="${activeRequestId}"]`);
+                                if (row) {
+                                    if (action === 'complete') {
+                                        row.setAttribute('data-status', 'completed');
+                                        const badge = row.querySelector('.badge-status');
+                                        if (badge) {
+                                            badge.className = 'badge-status bg-success';
+                                            badge.textContent = 'Выполнена';
+                                        }
+                                    } else {
+                                        row.setAttribute('data-status', 'in_progress');
+                                        const badge = row.querySelector('.badge-status');
+                                        if (badge) {
+                                            badge.className = 'badge-status bg-primary';
+                                            badge.textContent = 'В работе';
+                                        }
                                     }
                                 }
-                            }
-                        } else alert(data.message || 'Ошибка');
-                    }).catch(() => alert('Ошибка соединения'));
-                } else if (action === 'close') {
-                    window.location.href = url;
-                }
-                hideMenu();
+                            } else alert(data.message || 'Ошибка');
+                        }).catch(() => alert('Ошибка соединения'));
+                    } else if (action === 'close') {
+                        window.location.href = url;
+                    }
+                    hideMenu();
+                });
             });
-        });
 
-        document.getElementById('confirm-assign-btn')?.addEventListener('click', () => {
-            const userId = document.getElementById('assign-user-select').value;
-            if (userId) assignExecutor(activeRequestId, userId);
-            else alert('Выберите исполнителя');
-        });
+            document.getElementById('confirm-assign-btn')?.addEventListener('click', () => {
+                const userId = document.getElementById('assign-user-select').value;
+                if (userId) assignExecutor(activeRequestId, userId);
+                else alert('Выберите исполнителя');
+            });
+        }
     })();
 </script>
 

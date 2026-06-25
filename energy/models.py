@@ -115,8 +115,9 @@ class Meter(models.Model):
         - активность,
         - коэффициент трансформации (для электроэнергии),
         - флаг многотарифности,
-        - начальное показание (для однотарифных),
+        - начальное показание (для однотарифных) — используется только для обратной совместимости,
         - дату сброса (замены прибора) – влияет на пересчёт потребления.
+        - флаг технического учёта – исключает из общих отчётов.
     """
     serial_number = models.CharField(
         max_length=50,
@@ -137,6 +138,11 @@ class Meter(models.Model):
         default=True,
         verbose_name="Активен"
     )
+    is_technical = models.BooleanField(
+        default=False,
+        verbose_name="Технический учёт",
+        help_text="Показания этого счётчика не учитываются в общих отчётах и статистике."
+    )
     transformation_ratio = models.DecimalField(
         max_digits=10,
         decimal_places=3,
@@ -153,8 +159,8 @@ class Meter(models.Model):
         max_digits=12,
         decimal_places=3,
         default=0,
-        verbose_name="Начальное показание",
-        help_text="Для однотарифных счётчиков. Будет вычтено из первого показания."
+        verbose_name="Начальное показание (устаревшее, используется история)",
+        help_text="Для однотарифных счётчиков. Это поле устарело, используйте историю начальных показаний."
     )
     reset_date = models.DateField(
         null=True,
@@ -169,7 +175,7 @@ class Meter(models.Model):
     def recalc_consumption(self):
         """
         Пересчитывает потребление для всех показаний данного счётчика.
-        Учитывает дату сброса (reset_date) и начальные показания.
+        Учитывает дату сброса (reset_date) и историю начальных показаний.
         Для многотарифных счётчиков пересчитывает потребление по каждой зоне.
         """
         if hasattr(self, '_recalc_running') and self._recalc_running:
@@ -184,16 +190,18 @@ class Meter(models.Model):
                 return v.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
 
             if self.is_multi_tariff:
-                from .models import TariffComponent, InitialZoneReading
+                from .models import TariffComponent, InitialZoneValueHistory
                 components = TariffComponent.objects.filter(
                     resource_type=self.resource_type,
                     is_multi_tariff_zone=True
                 )
                 for comp in components:
-                    initial = InitialZoneReading.objects.filter(
-                        meter=self, tariff_component=comp
-                    ).first()
-                    base_value = initial.value if initial else Decimal('0')
+                    # Получаем историю начальных значений для этой зоны, упорядоченную по дате
+                    history = InitialZoneValueHistory.objects.filter(
+                        meter=self,
+                        tariff_component=comp
+                    ).order_by('date_from')
+                    history_list = list(history)
 
                     for reading in readings:
                         try:
@@ -201,8 +209,16 @@ class Meter(models.Model):
                         except ZoneReading.DoesNotExist:
                             continue
 
+                        # Находим подходящее начальное значение (последнее, у которого date_from <= reading.date)
+                        base_value = Decimal('0')
+                        for h in reversed(history_list):
+                            if h.date_from <= reading.date:
+                                base_value = h.value
+                                break
+                        # Если нет записи в истории – используем 0
+
+                        # Вычисляем предыдущее показание с учётом reset_date
                         if self.reset_date and reading.date >= self.reset_date:
-                            # После даты сброса – ищем предыдущее показание среди записей >= reset_date
                             prev = ZoneReading.objects.filter(
                                 reading__meter=self,
                                 tariff_component=comp,
@@ -214,7 +230,6 @@ class Meter(models.Model):
                             else:
                                 raw = zr.value - base_value
                         else:
-                            # Обычная цепочка (без сброса)
                             prev = ZoneReading.objects.filter(
                                 reading__meter=self,
                                 tariff_component=comp,
@@ -234,11 +249,20 @@ class Meter(models.Model):
                             zr.save(update_fields=['consumption'])
                             delattr(zr, '_skip_recalc')
             else:
-                # Однотарифный счётчик
-                base_value = self.initial_value
+                # Однотарифный счётчик – аналогично с историей InitialValueHistory
+                history = InitialValueHistory.objects.filter(meter=self).order_by('date_from')
+                history_list = list(history)
+
                 for reading in readings:
                     if reading.value is None:
                         continue
+
+                    # Находим подходящее начальное значение
+                    base_value = Decimal('0')
+                    for h in reversed(history_list):
+                        if h.date_from <= reading.date:
+                            base_value = h.value
+                            break
 
                     if self.reset_date and reading.date >= self.reset_date:
                         prev = Reading.objects.filter(
@@ -280,6 +304,7 @@ class InitialZoneReading(models.Model):
     """
     Начальные показания для каждого компонента (зоны) многотарифного счётчика.
     Используются для расчёта потребления после замены прибора.
+    Это поле устарело и сохранено только для обратной совместимости.
     """
     meter = models.OneToOneField(
         Meter,
@@ -291,13 +316,13 @@ class InitialZoneReading(models.Model):
         max_digits=12,
         decimal_places=3,
         default=0,
-        verbose_name="Начальное показание"
+        verbose_name="Начальное показание (устаревшее)"
     )
 
     class Meta:
         unique_together = ['meter', 'tariff_component']
-        verbose_name = "Начальное показание по зоне"
-        verbose_name_plural = "Начальные показания по зонам"
+        verbose_name = "Начальное показание по зоне (устаревшее)"
+        verbose_name_plural = "Начальные показания по зонам (устаревшие)"
 
     def __str__(self):
         return f"{self.meter.serial_number} – {self.tariff_component.name}: {self.value}"
@@ -331,7 +356,6 @@ class Reading(models.Model):
         blank=True,
         verbose_name="Потребление (рассчитывается автоматически)"
     )
-    # ===== НОВОЕ ПОЛЕ ДЛЯ ЗАГРУЗКИ ФАЙЛОВ =====
     document = models.FileField(
         upload_to='reading_documents/%Y/%m/%d/',
         blank=True,
@@ -340,7 +364,6 @@ class Reading(models.Model):
         verbose_name='Документ (фото, скан, PDF)',
         help_text='Максимум 5 МБ. Разрешены JPG, PNG, GIF, BMP, PDF.'
     )
-    # =========================================
 
     def clean(self):
         if self.date and self.date > timezone.now().date():
@@ -396,33 +419,11 @@ class ZoneReading(models.Model):
     )
 
     def save(self, *args, **kwargs):
-        # При первом сохранении вычисляем потребление, если не задано
-        if not self.pk:
-            prev = ZoneReading.objects.filter(
-                reading__meter=self.reading.meter,
-                tariff_component=self.tariff_component,
-                reading__date__lt=self.reading.date
-            ).order_by('-reading__date').first()
-            if prev:
-                raw = self.value - prev.value
-            else:
-                try:
-                    initial = InitialZoneReading.objects.get(
-                        meter=self.reading.meter,
-                        tariff_component=self.tariff_component
-                    )
-                    raw = self.value - initial.value
-                except InitialZoneReading.DoesNotExist:
-                    raw = self.value
-            rounded = (raw * self.reading.meter.transformation_ratio).quantize(
-                Decimal('0.001'), rounding=ROUND_HALF_UP
-            )
-            self.consumption = rounded if rounded > 0 else Decimal('0')
-        else:
-            if self.consumption is not None:
-                self.consumption = self.consumption.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
-                if self.consumption < 0:
-                    self.consumption = Decimal('0')
+        # Вычисление consumption удалено – теперь это делает recalc_consumption
+        if self.consumption is not None:
+            self.consumption = self.consumption.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
+            if self.consumption < 0:
+                self.consumption = Decimal('0')
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -522,6 +523,81 @@ class UserLog(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.get_action_display()} - {self.timestamp}"
+
+
+# ------------------------------------------------------------
+# НОВЫЕ МОДЕЛИ: ИСТОРИЯ НАЧАЛЬНЫХ ПОКАЗАНИЙ
+# ------------------------------------------------------------
+
+class InitialValueHistory(models.Model):
+    """
+    История изменения начального показания для однотарифного счётчика.
+    Хранит значение и дату, с которой оно действует.
+    """
+    meter = models.ForeignKey(
+        Meter,
+        on_delete=models.CASCADE,
+        related_name='initial_value_history',
+        verbose_name="Счётчик"
+    )
+    value = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        verbose_name="Начальное показание"
+    )
+    date_from = models.DateField(
+        verbose_name="Действует с"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания записи"
+    )
+
+    class Meta:
+        ordering = ['-date_from']
+        verbose_name = "История начального показания"
+        verbose_name_plural = "История начальных показаний"
+
+    def __str__(self):
+        return f"{self.meter.serial_number} – {self.value} (с {self.date_from})"
+
+
+class InitialZoneValueHistory(models.Model):
+    """
+    История изменения начального показания по зоне для многотарифного счётчика.
+    """
+    meter = models.ForeignKey(
+        Meter,
+        on_delete=models.CASCADE,
+        related_name='initial_zone_value_history',
+        verbose_name="Счётчик"
+    )
+    tariff_component = models.ForeignKey(
+        TariffComponent,
+        on_delete=models.CASCADE,
+        verbose_name="Тарифный компонент (зона)"
+    )
+    value = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        verbose_name="Начальное показание по зоне"
+    )
+    date_from = models.DateField(
+        verbose_name="Действует с"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания записи"
+    )
+
+    class Meta:
+        ordering = ['-date_from']
+        unique_together = ['meter', 'tariff_component', 'date_from']
+        verbose_name = "История начального показания по зоне"
+        verbose_name_plural = "История начальных показаний по зонам"
+
+    def __str__(self):
+        return f"{self.meter.serial_number} – {self.tariff_component.name}: {self.value} (с {self.date_from})"
 
 
 # ------------------------------------------------------------

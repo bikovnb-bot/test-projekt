@@ -1,3 +1,5 @@
+# energy/utils.py
+
 from decimal import Decimal
 from datetime import date, timedelta
 from django.db.models import Sum
@@ -5,23 +7,15 @@ from .models import Reading, UserLog
 from users.decorators import is_admin, has_contract_access, is_contract_specialist, is_engineer
 
 def can_view_all_meters(user):
-    """
-    Может ли пользователь видеть все счётчики?
-    Новые роли: ADMIN, CONTRACT_SPECIALIST, ENGINEER, DISPATCHER? 
-    По логике: специалист по договорам и инженер должны видеть все счётчики.
-    Диспетчер и рабочий – нет. Решите по своей бизнес-логике.
-    """
     if not user.is_authenticated:
         return False
     if user.is_superuser:
         return True
     if not hasattr(user, 'profile'):
         return False
-    # Разрешаем: админ, специалист по договорам, инженер
     return user.profile.role in ['ADMIN', 'CONTRACT_SPECIALIST', 'ENGINEER']
 
 def can_edit_all_meters(user):
-    """Редактирование любых счётчиков: админ, специалист по договорам, инженер (но инженер только редактирует? по заданию инженер может просматривать и редактировать счетчики)"""
     if not user.is_authenticated:
         return False
     if user.is_superuser:
@@ -31,40 +25,34 @@ def can_edit_all_meters(user):
     return user.profile.role in ['ADMIN', 'CONTRACT_SPECIALIST', 'ENGINEER']
 
 def can_assign_owner(user):
-    """Назначение владельца счётчика: только администратор"""
+    if not hasattr(user, 'profile'):
+        return False
     return is_admin(user)
 
 def can_view_meter(user, meter):
-    """Просмотр конкретного счётчика (используем общую функцию)"""
     return can_view_all_meters(user)
 
 def can_edit_meter(user, meter):
-    """Редактирование счётчика"""
     return can_edit_all_meters(user)
 
 def can_delete_meter(user, meter):
-    """Удаление счётчика: только администратор"""
     return is_admin(user)
 
 def can_edit_reading(user, reading):
-    """Редактирование показаний – по правам на счётчик"""
     return can_edit_meter(user, reading.meter)
 
 def can_delete_reading(user, reading):
-    """Удаление показаний – только администратор"""
     return can_delete_meter(user, reading.meter)
 
 def can_upload_document(user, meter):
-    """Загрузка документов – как редактирование счётчика"""
     return can_edit_meter(user, meter)
 
 def can_delete_document(user, meter):
-    """Удаление документов – как редактирование счётчика"""
     return can_edit_meter(user, meter)
 
 
 # ------------------------------------------------------------
-# Функции для проверки аномального потребления (без изменений)
+# Функции для проверки аномального потребления
 # ------------------------------------------------------------
 def get_avg_consumption(meter, months=6):
     """Возвращает среднемесячное потребление за последние months месяцев (без учёта текущего месяца)"""
@@ -86,14 +74,13 @@ def get_avg_consumption(meter, months=6):
     return total / Decimal(len(readings))
 
 def is_anomaly(consumption, avg_consumption, threshold=2.0):
-    """Проверяет аномальность: consumption > avg * threshold"""
     if avg_consumption == 0:
         return False
     return consumption > avg_consumption * Decimal(str(threshold))
 
 
 # ------------------------------------------------------------
-# Функции для логирования действий пользователей (без изменений)
+# Функции для логирования действий пользователей
 # ------------------------------------------------------------
 def get_client_ip(request):
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')

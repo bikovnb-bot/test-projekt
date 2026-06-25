@@ -8,16 +8,15 @@
 Используют сервисный слой, декораторы прав и логирование.
 """
 
-import logging
-import csv
-from decimal import Decimal
-
+from django.db.models import Q, Count
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
-from django.db.models import Q, Count
-from django.http import HttpResponse, JsonResponse
+import logging
+import csv
+from decimal import Decimal
 
 from users.models import UserRole
 from ..models import (
@@ -225,10 +224,6 @@ def request_remove_assignee(request, pk, user_id):
 @login_required
 @manager_required
 def custom_report(request):
-    """
-    Настраиваемый отчёт по заявкам с фильтрами, выбором колонок,
-    экспортом в Excel и CSV, сохранением колонок в сессии.
-    """
     import openpyxl
     from openpyxl.utils import get_column_letter
 
@@ -239,24 +234,25 @@ def custom_report(request):
         return redirect('requests_app:request_list')
 
     # Сохранение выбранных колонок в сессию
-    if request.method == 'GET' and 'columns' in request.GET:
+    initial_columns = None
+    if 'columns' in request.GET:
         request.session['report_columns'] = request.GET.getlist('columns')
     elif 'columns' not in request.GET:
         saved_columns = request.session.get('report_columns')
         if saved_columns:
-            # Добавляем сохранённые колонки в GET-параметры для формы
-            get_params = request.GET.copy()
-            for col in saved_columns:
-                get_params.appendlist('columns', col)
-            request.GET = get_params
+            initial_columns = saved_columns
 
-    form = ReportForm(request.GET or None)
+    form = ReportForm(request.GET or None, initial={'columns': initial_columns} if initial_columns else None)
+
     if role == UserRole.WORKER:
         qs = ServiceRequest.objects.filter(Q(assigned_to=user) | Q(assignees__user=user)).distinct()
     else:
         qs = ServiceRequest.objects.all()
 
     if request.GET and form.is_valid():
+        # сохраняем колонки в сессию
+        request.session['report_columns'] = form.cleaned_data.get('columns', [])
+
         if form.cleaned_data.get('status'):
             qs = qs.filter(status=form.cleaned_data['status'])
         if form.cleaned_data.get('priority'):
@@ -371,9 +367,7 @@ def custom_report(request):
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="custom_report.csv"'
         writer = csv.writer(response, delimiter=';')
-        # Заголовки
         writer.writerow([field_map.get(col, col) for col in columns])
-        # Данные
         for req in qs.select_related('building', 'section', 'created_by', 'assigned_to', 'request_type'):
             row = []
             for col in columns:
@@ -458,3 +452,84 @@ def custom_report(request):
         'status_data': status_data,
     }
     return render(request, 'requests_app/custom_report.html', context)
+
+@login_required
+@manager_required
+def bulk_status_update(request):
+    """
+    Массовое изменение статуса выбранных заявок.
+    Поддерживает AJAX-запросы с JSON-ответом.
+    """
+    if request.method != 'POST':
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': 'Метод не разрешён'}, status=405)
+        return redirect('requests_app:request_list')
+
+    ids = request.POST.getlist('request_ids[]') or request.POST.getlist('request_ids')
+    if not ids:
+        message = 'Не выбраны заявки.'
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': message})
+        messages.error(request, message)
+        return redirect('requests_app:request_list')
+
+    try:
+        ids = [int(x) for x in ids if x and str(x).isdigit()]
+    except ValueError:
+        message = 'Некорректный ID заявки.'
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': message})
+        messages.error(request, message)
+        return redirect('requests_app:request_list')
+
+    if not ids:
+        message = 'Не выбраны заявки.'
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': message})
+        messages.error(request, message)
+        return redirect('requests_app:request_list')
+
+    new_status = request.POST.get('new_status')
+    if not new_status or new_status not in dict(ServiceRequest.STATUS_CHOICES):
+        message = 'Некорректный статус.'
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': message})
+        messages.error(request, message)
+        return redirect('requests_app:request_list')
+
+    # Запрещаем массовый перевод в статусы, требующие дополнительных данных
+    if new_status in ['closed', 'suspended']:
+        message = 'Массовое изменение статуса на "Закрыта" или "Приостановлена" не поддерживается. Выполните эти действия индивидуально для каждой заявки.'
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': message})
+        messages.error(request, message)
+        return redirect('requests_app:request_list')
+
+    user = request.user
+    role = user.profile.role if hasattr(user, 'profile') else None
+    if role not in [UserRole.ADMIN, UserRole.ENGINEER, UserRole.DISPATCHER]:
+        message = 'У вас нет прав на массовое изменение статуса.'
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': message})
+        messages.error(request, message)
+        return redirect('requests_app:request_list')
+
+    # Для не-админов запрещаем закрытие, но оно уже отсечено выше
+
+    qs = ServiceRequest.objects.filter(id__in=ids)
+    if role != UserRole.ADMIN:
+        qs = qs.exclude(status='closed')
+    updated_count = qs.update(status=new_status)
+
+    for req in qs:
+        RequestHistory.objects.create(
+            request=req,
+            user=user,
+            action=f'Статус изменён на "{dict(ServiceRequest.STATUS_CHOICES).get(new_status, new_status)}" (массовое обновление)'
+        )
+
+    message = f'Статус обновлён для {updated_count} заявок.'
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return JsonResponse({'success': True, 'message': message, 'updated': updated_count})
+    messages.success(request, message)
+    return redirect('requests_app:request_list')

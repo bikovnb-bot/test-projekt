@@ -1,17 +1,18 @@
 # assets/forms.py
 from django import forms
 from django.contrib.auth.models import User
-from .models import Asset, AssetCategory, AssetAssignment, AssetCheck
+from .models import Asset, AssetCategory, AssetAssignment, AssetCheck, AssetPhoto
 
 
 class AssetForm(forms.ModelForm):
+    delete_photo = forms.BooleanField(required=False, label='Удалить основное фото')
+
     class Meta:
         model = Asset
         fields = [
-            'inventory_number',
-            'name', 'category', 'description', 'serial_number',
+            'inventory_number', 'name', 'category', 'description', 'serial_number',
             'manufacturer', 'model', 'purchase_date', 'cost', 'useful_life_months',
-            'location', 'responsible_person', 'status', 'notes'
+            'location', 'responsible_person', 'status', 'notes', 'photo'
         ]
         widgets = {
             'inventory_number': forms.TextInput(attrs={'class': 'form-control'}),
@@ -28,6 +29,7 @@ class AssetForm(forms.ModelForm):
             'responsible_person': forms.Select(attrs={'class': 'form-select'}),
             'status': forms.Select(attrs={'class': 'form-select'}),
             'notes': forms.Textarea(attrs={'rows': 2, 'class': 'form-control'}),
+            'photo': forms.FileInput(attrs={'class': 'form-control', 'accept': 'image/*'}),
         }
         labels = {
             'inventory_number': 'Инвентарный номер',
@@ -44,13 +46,23 @@ class AssetForm(forms.ModelForm):
             'responsible_person': 'Ответственное лицо',
             'status': 'Статус',
             'notes': 'Примечания',
+            'photo': 'Основное фото',
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Делаем поле инвентарного номера необязательным
         self.fields['inventory_number'].required = False
         self.fields['inventory_number'].help_text = "Оставьте пустым для автоматической генерации"
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.cleaned_data.get('delete_photo'):
+            if instance.photo:
+                instance.photo.delete(save=False)
+            instance.photo = None
+        if commit:
+            instance.save()
+        return instance
 
 
 class AssetAssignmentForm(forms.ModelForm):
@@ -79,3 +91,18 @@ class AssetCheckForm(forms.ModelForm):
             'condition': 'Состояние',
             'notes': 'Примечания',
         }
+
+
+class AssetGalleryForm(forms.Form):
+    """
+    Форма для загрузки нескольких фото в галерею.
+    В шаблоне атрибут multiple будет добавлен вручную.
+    """
+    photos = forms.FileField(
+        widget=forms.FileInput(attrs={
+            'accept': 'image/*',
+            'class': 'form-control'
+        }),
+        label='Выберите фотографии (можно несколько)',
+        required=False
+    )

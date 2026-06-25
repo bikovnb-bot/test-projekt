@@ -26,6 +26,10 @@ class YandexTranslateAPI:
         """
         Переводит текст на указанный язык с кэшированием результата.
         """
+        if not self.api_key or not self.folder_id:
+            logger.warning('Yandex Translate не настроен (отсутствует API-ключ или folder_id).')
+            return text
+
         if not text or not text.strip():
             return text
 

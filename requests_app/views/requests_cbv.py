@@ -29,6 +29,12 @@ class RequestListView(LoginRequiredMixin, ListView):
 
         qs = ServiceRequest.objects.select_related(
             'building', 'section', 'created_by', 'assigned_to'
+        ).only(
+            'id', 'request_number', 'building__name', 'building__address',
+            'section__name', 'room_number', 'priority', 'status',
+            'created_by__username', 'created_by__first_name', 'created_by__last_name',
+            'assigned_to__username', 'assigned_to__first_name', 'assigned_to__last_name',
+            'created_at', 'description', 'contact_name'
         )
 
         if role == UserRole.WORKER:
@@ -142,14 +148,15 @@ class RequestDetailView(LoginRequiredMixin, DetailView):
         )
 
     def dispatch(self, request, *args, **kwargs):
-        if not can_view_request(request.user, self.get_object()):
+        self.object = self.get_object()
+        if not can_view_request(request.user, self.object):
             messages.error(request, 'У вас нет доступа к этой заявке.')
             return redirect('requests_app:request_list')
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        req = self.get_object()
+        req = self.object
         user = self.request.user
         role = user.profile.role if hasattr(user, 'profile') else None
 
@@ -219,7 +226,6 @@ class RequestCreateView(LoginRequiredMixin, CreateView):
             data['building'] = req_settings.default_building
         else:
             data['building'] = data.get('building')
-        # Если дата создания не указана, ставим текущую
         if not data.get('created_at'):
             data['created_at'] = timezone.now()
         files = self.request.FILES.getlist('files')

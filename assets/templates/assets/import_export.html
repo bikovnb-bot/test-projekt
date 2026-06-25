@@ -1,0 +1,140 @@
+{# assets/templates/assets/import_export.html #}
+{% extends "base.html" %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}Импорт / Экспорт имущества{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2><i class="bi bi-arrow-repeat text-primary me-2"></i>Импорт / Экспорт имущества</h2>
+        <a href="{% url 'assets:asset_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+            <i class="bi bi-list-ul"></i> К списку
+        </a>
+    </div>
+
+    <p class="text-muted">Загрузите Excel-файл для импорта или скачайте текущий список для редактирования.</p>
+
+    <!-- Сообщения об ошибках и предупреждениях -->
+    {% if messages %}
+        <div class="mb-3">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="row">
+        <!-- КОЛОНКА ИМПОРТА -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-upload me-2"></i>Импорт</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data" id="importForm">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label for="excel_file" class="form-label fw-semibold">Выберите Excel-файл (.xlsx)</label>
+                            <input type="file" class="form-control" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
+                            <div class="form-text">
+                                Файл должен содержать колонки:
+                                <strong>Счет (категория)</strong>,
+                                <strong>Наименование</strong> (обязательно),
+                                <strong>Инвентарный номер</strong> (обязательно, должен быть уникальным).
+                                <br>Остальные поля опциональны.
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-upload"></i> Загрузить и импортировать
+                        </button>
+                        <button type="reset" class="btn btn-outline-secondary">Сбросить</button>
+                    </form>
+                    <hr>
+                    <div class="small text-muted">
+                        <strong>Примечания:</strong>
+                        <ul class="mb-0">
+                            <li>Если объект с указанным инвентарным номером уже существует, он <strong>не будет обновлён</strong> (только создаются новые записи).</li>
+                            <li>Все ошибки (неверный формат даты, стоимости, дубликаты) будут показаны в виде сообщений после попытки импорта.</li>
+                            <li>Рекомендуется перед массовым импортом создать резервную копию данных.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- КОЛОНКА ЭКСПОРТА -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-download me-2"></i>Экспорт</h5>
+                </div>
+                <div class="card-body">
+                    <p>Скачайте текущий список всех объектов в формате Excel, чтобы отредактировать или дополнить.</p>
+                    <a href="{% url 'assets:export_assets' %}" class="btn btn-success">
+                        <i class="bi bi-download"></i> Скачать Excel (все записи)
+                    </a>
+                    <hr>
+                    <p class="small text-muted">
+                        Экспортированный файл содержит все поля, включая инвентарный номер, название, категорию, ответственного, дату ввода, стоимость, серийный номер, модель, производителя, местоположение, статус и примечания.
+                    </p>
+                    <p class="small text-muted">
+                        <i class="bi bi-info-circle"></i> После редактирования файла вы можете загрузить его обратно через форму импорта.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Дополнительные советы и ссылки -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-question-circle me-2"></i>Помощь</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li><strong>Категории (балансовые счета)</strong> – если указанная категория не существует, она будет создана автоматически.</li>
+                        <li><strong>Ответственный</strong> – указывается полное имя (Имя Фамилия). Если пользователь не найден, поле останется пустым (выводится предупреждение).</li>
+                        <li><strong>Дата ввода</strong> – должна быть в формате <code>дд.мм.гггг</code> (например, 01.01.2024).</li>
+                        <li><strong>Стоимость</strong> – десятичная, разделитель – точка или запятая.</li>
+                        <li><strong>Статус</strong> – должен точно соответствовать одному из вариантов: <em>В эксплуатации, На складе, В ремонте, Списано, Утеряно</em>.</li>
+                        <li>При возникновении ошибок импорта детали отображаются в сообщениях на этой странице.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Дополнительная валидация перед отправкой формы (необязательно)
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('importForm');
+        const fileInput = document.getElementById('excel_file');
+        form.addEventListener('submit', function(e) {
+            if (!fileInput.files || fileInput.files.length === 0) {
+                e.preventDefault();
+                alert('Пожалуйста, выберите файл для импорта.');
+                return false;
+            }
+            // Проверка расширения
+            const fileName = fileInput.files[0].name;
+            const extension = fileName.split('.').pop().toLowerCase();
+            if (!['xlsx', 'xls'].includes(extension)) {
+                e.preventDefault();
+                alert('Пожалуйста, выберите файл с расширением .xlsx или .xls');
+                return false;
+            }
+            return true;
+        });
+    });
+</script>
+{% endblock %}

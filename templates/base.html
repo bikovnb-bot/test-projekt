@@ -104,23 +104,13 @@
                 </a>
             </li>
 
-            <!-- Заявки -->
+            <!-- Заявки (прямая ссылка на список, без подменю) -->
             <li>
-                <a href="#">
+                <a href="{% url 'requests_app:request_list' %}">
                     <i class="bi bi-clipboard"></i>
                     <strong>Заявки</strong>
                     <small>requests</small>
                 </a>
-                <ul>
-                    <li><a href="{% url 'requests_app:request_list' %}"><i class="bi bi-list-ul"></i>Список заявок</a></li>
-                    <li><a href="{% url 'requests_app:request_create' %}"><i class="bi bi-plus-circle"></i>Новая заявка</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a href="{% url 'requests_app:material_stock' %}"><i class="bi bi-box-seam"></i>Материалы на складе</a></li>
-                    {% if user.is_authenticated and user.profile.role == 'ADMIN' %}
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a href="{% url 'requests_app:public_request_create' %}?lang=ru"><i class="bi bi-envelope-paper"></i>Публичная форма</a></li>
-                    {% endif %}
-                </ul>
             </li>
 
             <!-- Приборы учёта -->
@@ -140,20 +130,21 @@
             </li>
 
             <!-- Имущество (с подменю) -->
-<li>
-    <a href="#">
-        <i class="bi bi-boxes"></i>
-        <strong>Имущество</strong>
-        <small>assets</small>
-    </a>
-    <ul>
-        <li><a href="{% url 'assets:asset_list' %}"><i class="bi bi-list-ul"></i>Список имущества</a></li>
-        <li><a href="{% url 'assets:inventory_scan' %}"><i class="bi bi-qr-code-scan"></i>Инвентаризация</a></li>
-        <li><hr class="dropdown-divider"></li>
-        <li><a href="{% url 'assets:inventory_history' %}"><i class="bi bi-clock-history"></i>История инвентаризаций</a></li>
-        <li><a href="{% url 'assets:asset_report' %}"><i class="bi bi-file-earmark-text"></i>Отчёт по имуществу</a></li>
-    </ul>
-</li>
+            <li>
+                <a href="#">
+                    <i class="bi bi-boxes"></i>
+                    <strong>Имущество</strong>
+                    <small>assets</small>
+                </a>
+                <ul>
+                    <li><a href="{% url 'assets:asset_list' %}"><i class="bi bi-list-ul"></i>Список имущества</a></li>
+                    <li><a href="{% url 'assets:inventory_scan' %}"><i class="bi bi-qr-code-scan"></i>Инвентаризация</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a href="{% url 'assets:inventory_history' %}"><i class="bi bi-clock-history"></i>История инвентаризаций</a></li>
+                    <li><a href="{% url 'assets:asset_report' %}"><i class="bi bi-file-earmark-text"></i>Отчёт по имуществу</a></li>
+                </ul>
+            </li>
+
             <!-- Администрирование (только admin/staff) -->
             {% if is_admin or user.is_staff %}
             <li>
@@ -164,6 +155,8 @@
                 </a>
                 <ul>
                     {% if is_admin %}<li><a href="{% url 'users:user_list' %}"><i class="bi bi-people"></i>Пользователи</a></li>{% endif %}
+                    <!-- Публичная форма перенесена сюда -->
+                    {% if is_admin %}<li><a href="{% url 'requests_app:public_request_create' %}?lang=ru"><i class="bi bi-envelope-paper"></i>Публичная форма</a></li>{% endif %}
                     {% if user.is_staff %}<li><a href="/admin/"><i class="bi bi-shield-lock"></i>Админка Django</a></li>{% endif %}
                 </ul>
             </li>
@@ -210,31 +203,29 @@
         </ul>
     </div>
 
-    <!-- Скрипт для мобильного меню (клик по пунктам с подменю) -->
+    <!-- Исправленный скрипт для мобильного меню -->
     <script>
     (function() {
         const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
         if (isTouch) {
-            const itemsWithSubmenu = document.querySelectorAll('.mcd-menu > li:has(ul)');
-            itemsWithSubmenu.forEach(item => {
+            const items = document.querySelectorAll('.mcd-menu > li');
+            items.forEach(item => {
+                const sub = item.querySelector('ul');
+                if (!sub) return;
                 const link = item.querySelector('> a');
-                if (link) {
-                    link.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        const sub = item.querySelector('ul');
-                        if (sub) {
-                            document.querySelectorAll('.mcd-menu > li ul').forEach(ul => {
-                                if (ul !== sub) {
-                                    ul.style.opacity = '0';
-                                    ul.style.visibility = 'hidden';
-                                }
-                            });
-                            const isVisible = sub.style.visibility === 'visible';
-                            sub.style.visibility = isVisible ? 'hidden' : 'visible';
-                            sub.style.opacity = isVisible ? '0' : '1';
+                if (!link) return;
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    document.querySelectorAll('.mcd-menu > li ul').forEach(ul => {
+                        if (ul !== sub) {
+                            ul.style.opacity = '0';
+                            ul.style.visibility = 'hidden';
                         }
                     });
-                }
+                    const isVisible = sub.style.visibility === 'visible';
+                    sub.style.visibility = isVisible ? 'hidden' : 'visible';
+                    sub.style.opacity = isVisible ? '0' : '1';
+                });
             });
         }
     })();

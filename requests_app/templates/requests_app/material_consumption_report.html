@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}Отчёт по расходу материалов{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>📊 Отчёт по расходу материалов</h2>
+        <a href="{% url 'requests_app:material_stock' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+            <i class="bi bi-arrow-left"></i> Назад
+        </a>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <i class="bi bi-funnel"></i> Фильтры
+        </div>
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-4">
+                    {{ form.date_from.label_tag }}
+                    {{ form.date_from }}
+                </div>
+                <div class="col-md-4">
+                    {{ form.date_to.label_tag }}
+                    {{ form.date_to }}
+                </div>
+                <div class="col-md-3">
+                    {{ form.material.label_tag }}
+                    {{ form.material }}
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary btn-sm rounded-pill px-3 py-1 w-100">Показать</button>
+                </div>
+            </form>
+            {% if form.errors %}
+                <div class="alert alert-danger mt-3">{{ form.errors }}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if report_data %}
+        <div class="d-flex justify-content-between mb-3">
+            <div>
+                <span class="badge bg-secondary">Период: {{ date_from|date:"d.m.Y" }} — {{ date_to|date:"d.m.Y" }}</span>
+                {% if selected_material %}
+                    <span class="badge bg-info ms-2">Материал: {{ selected_material.name }}</span>
+                {% endif %}
+            </div>
+            <a href="?{{ request.GET.urlencode }}&export=1" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1">
+                <i class="bi bi-file-earmark-excel"></i> Экспорт в Excel
+            </a>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped table-hover mb-0 align-middle">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>№</th>
+                                <th>Наименование</th>
+                                <th>Ед. изм.</th>
+                                <th class="text-end">Количество</th>
+                                <th class="text-end">Сумма (₽)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in report_data %}
+                            <tr>
+                                <td>{{ forloop.counter }}</td>
+                                <td>{{ item.material__name }}</td>
+                                <td>{{ item.material__unit }}</td>
+                                <td class="text-end">{{ item.total_quantity|floatformat:2 }}</td>
+                                <td class="text-end">{{ item.total_sum|space_thousands }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-secondary fw-bold">
+                                <td colspan="3" class="text-end">ИТОГО:</td>
+                                <td class="text-end">{{ total_quantity|floatformat:2 }}</td>
+                                <td class="text-end">{{ total_sum|space_thousands }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    {% elif form.is_valid %}
+        <div class="alert alert-info">За выбранный период расход материалов не найден.</div>
+    {% else %}
+        <div class="alert alert-secondary">Выберите период и нажмите «Показать».</div>
+    {% endif %}
+</div>
+{% endblock %}

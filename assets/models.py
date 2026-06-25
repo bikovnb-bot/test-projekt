@@ -77,6 +77,12 @@ class Asset(models.Model):
         upload_to='asset_qr/', blank=True, null=True,
         verbose_name="QR-код"
     )
+    photo = models.ImageField(
+        upload_to='asset_photos/',
+        blank=True,
+        null=True,
+        verbose_name="Основное фото"
+    )
     notes = models.TextField(blank=True, verbose_name="Примечания")
     imported_from_excel = models.BooleanField(
         default=False,
@@ -126,12 +132,9 @@ class Asset(models.Model):
     def generate_qr_code(self):
         """
         Генерирует QR-код, содержащий инвентарный номер объекта.
-        При сканировании на странице инвентаризации этот номер используется
-        для поиска имущества и отметки его в проверке.
         """
         if not self.pk or not self.inventory_number:
             return
-        # Кодируем только инвентарный номер (без URL)
         data = self.inventory_number
         try:
             qr = qrcode.QRCode(
@@ -149,6 +152,52 @@ class Asset(models.Model):
             self.qr_code.save(f"{self.inventory_number}.png", File(buffer), save=False)
         except ImportError:
             pass
+
+
+class AssetPhoto(models.Model):
+    """
+    Модель для хранения нескольких фотографий имущества (галерея)
+    """
+    asset = models.ForeignKey(
+        Asset,
+        on_delete=models.CASCADE,
+        related_name='photos',
+        verbose_name="Имущество"
+    )
+    image = models.ImageField(
+        upload_to='asset_gallery/',
+        verbose_name="Фотография"
+    )
+    caption = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Подпись"
+    )
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата загрузки"
+    )
+    # Поле для порядка (можно сортировать по времени загрузки)
+    order = models.PositiveIntegerField(
+        default=0,
+        blank=False,
+        null=False,
+        verbose_name="Порядок"
+    )
+
+    class Meta:
+        verbose_name = "Фото имущества"
+        verbose_name_plural = "Фотографии имущества"
+        ordering = ['order', 'uploaded_at']
+
+    def __str__(self):
+        return f"Фото для {self.asset.inventory_number} ({self.pk})"
+
+    def delete(self, *args, **kwargs):
+        # Удаляем файл при удалении записи
+        if self.image:
+            self.image.delete(save=False)
+        super().delete(*args, **kwargs)
 
 
 class AssetAssignment(models.Model):
@@ -207,5 +256,4 @@ def generate_asset_qr_on_save(sender, instance, created, **kwargs):
     if created or not instance.qr_code:
         instance.generate_qr_code()
         if instance.qr_code:
-            # Сохраняем только поле qr_code, чтобы избежать рекурсии
             instance.save(update_fields=['qr_code'])

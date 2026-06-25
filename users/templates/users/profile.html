@@ -11,7 +11,9 @@
             <div class="card shadow-sm text-center">
                 <div class="card-body">
                     {% if user.profile.avatar %}
-                        <img src="{{ user.profile.avatar.url }}" alt="avatar" class="rounded-circle img-fluid" style="width: 150px; height: 150px; object-fit: cover;">
+                        <img src="{{ user.profile.avatar.url }}" alt="avatar" 
+                             class="rounded-circle img-fluid" 
+                             style="width: 150px; height: 150px; object-fit: cover;">
                     {% else %}
                         <i class="bi bi-person-circle fs-1 text-secondary"></i>
                     {% endif %}
@@ -39,6 +41,9 @@
                     <div class="tab-pane fade show active" id="info">
                         <form method="post" enctype="multipart/form-data">
                             {% csrf_token %}
+                            {% if form.non_field_errors %}
+                                <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                            {% endif %}
                             {% for field in form %}
                             <div class="mb-3">
                                 {{ field.label_tag }}
@@ -53,6 +58,9 @@
                         <form method="post">
                             {% csrf_token %}
                             <input type="hidden" name="change_password" value="1">
+                            {% if password_form.non_field_errors %}
+                                <div class="alert alert-danger">{{ password_form.non_field_errors }}</div>
+                            {% endif %}
                             {% for field in password_form %}
                             <div class="mb-3">
                                 {{ field.label_tag }}
@@ -64,14 +72,61 @@
                         </form>
                     </div>
                     <div class="tab-pane fade" id="activity">
+                        <!-- Статистика -->
+                        <div class="row g-2 mb-3">
+                            <div class="col-sm-4">
+                                <div class="p-2 border rounded text-center">
+                                    <small class="text-muted">Всего входов</small>
+                                    <h5>{{ total_logins }}</h5>
+                                </div>
+                            </div>
+                            <div class="col-sm-4">
+                                <div class="p-2 border rounded text-center">
+                                    <small class="text-muted">Сегодня</small>
+                                    <h5>{{ logins_today }}</h5>
+                                </div>
+                            </div>
+                            <div class="col-sm-4">
+                                <div class="p-2 border rounded text-center">
+                                    <small class="text-muted">За 7 дней</small>
+                                    <h5>{{ logins_week }}</h5>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Список последних входов -->
+                        <h6 class="mt-3">Последние входы</h6>
+                        {% if logins %}
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Дата и время</th>
+                                            <th>IP-адрес</th>
+                                            <th>Браузер / устройство</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for login in logins %}
+                                        <tr>
+                                            <td>{{ login.login_time|date:"d.m.Y H:i" }}</td>
+                                            <td>{{ login.ip_address|default:"—" }}</td>
+                                            <td>{{ login.user_agent|truncatechars:40 }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <p class="text-muted">Нет записей о входах.</p>
+                        {% endif %}
+
+                        <hr>
+                        <!-- Старые поля (последняя активность и т.д.) -->
                         <ul class="list-group">
                             <li class="list-group-item d-flex justify-content-between">
                                 <span>Последняя активность</span>
                                 <span>{{ user.profile.last_activity|date:"d.m.Y H:i"|default:"—" }}</span>
-                            </li>
-                            <li class="list-group-item d-flex justify-content-between">
-                                <span>Количество входов</span>
-                                <span>{{ user.profile.login_count }}</span>
                             </li>
                             <li class="list-group-item d-flex justify-content-between">
                                 <span>Дата регистрации</span>

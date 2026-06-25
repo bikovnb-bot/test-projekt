@@ -1,76 +1,259 @@
 {% extends 'base.html' %}
+{% load static %}
 {% load custom_filters %}
 
 {% block title %}Приборы учёта{% endblock %}
 
-{% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>📋 Приборы учёта</h2>
-    {% if can_edit %}
-        <a href="{% url 'energy:add_meter' %}" class="btn btn-primary">
-            <i class="bi bi-plus-circle"></i> Добавить прибор
-        </a>
-    {% endif %}
-</div>
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+{% endblock %}
 
-<div class="row">
-    {% for meter in meters %}
-        <div class="col-md-6 col-lg-4 mb-3">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title">Прибор учёта (№ {{ meter.serial_number }})</h5>
-                    <p class="card-text">
-                        <span class="badge bg-secondary">{{ meter.resource_type.name }}</span>
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Заголовок и кнопки -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h2 class="fw-semibold fs-3 mb-0">
+            <i class="bi bi-speedometer2 text-primary me-2"></i> Приборы учёта
+        </h2>
+        <div>
+            {% if can_edit %}
+            <a href="{% url 'energy:add_meter' %}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+                <i class="bi bi-plus-lg"></i> Новый прибор
+            </a>
+            {% endif %}
+            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1" data-bs-toggle="modal" data-bs-target="#columnSettingsModal">
+                <i class="bi bi-layout-three-columns"></i> Настроить колонки
+            </button>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="row g-2 mb-3">
+        <div class="col-md-3 col-6">
+            <div class="stat-card bg-white border rounded-3 p-3 text-center shadow-sm">
+                <div class="stat-label text-muted small">Всего</div>
+                <div class="stat-value fs-4 fw-bold">{{ total_count }}</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="stat-card bg-white border rounded-3 p-3 text-center shadow-sm">
+                <div class="stat-label text-muted small">Основные</div>
+                <div class="stat-value fs-4 fw-bold text-success">{{ main_count }}</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="stat-card bg-white border rounded-3 p-3 text-center shadow-sm">
+                <div class="stat-label text-muted small">Технические</div>
+                <div class="stat-value fs-4 fw-bold text-warning">{{ technical_count }}</div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="stat-card bg-white border rounded-3 p-3 text-center shadow-sm">
+                <div class="stat-label text-muted small">Активные</div>
+                <div class="stat-value fs-4 fw-bold text-success">{{ active_count }}</div>
+                <div class="stat-sub text-muted small">({{ inactive_count }} неакт.)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Быстрые фильтры (чипсы) -->
+    <div class="filter-chips mb-3">
+        <a href="{% url 'energy:meter_list' %}" class="filter-chip {% if not filter_data.meter_type and not filter_data.status and not filter_data.resource_type_chip %}active{% endif %}">Все</a>
+        <a href="?meter_type=main" class="filter-chip {% if filter_data.meter_type == 'main' %}active{% endif %}">Основные</a>
+        <a href="?meter_type=technical" class="filter-chip {% if filter_data.meter_type == 'technical' %}active{% endif %}">⚙️ Технические</a>
+        <a href="?status=active" class="filter-chip {% if filter_data.status == 'active' %}active{% endif %}">Активные</a>
+        <a href="?status=inactive" class="filter-chip {% if filter_data.status == 'inactive' %}active{% endif %}">Неактивные</a>
+        {% for rt in used_resource_types %}
+            <a href="?resource_type_chip={{ rt.id }}" class="filter-chip {% if filter_data.resource_type_chip == rt.id|stringformat:'s' %}active{% endif %}">{{ rt.name }}</a>
+        {% endfor %}
+    </div>
+
+    <!-- Поиск и расширенный фильтр -->
+    <div class="search-group-wrapper mb-3">
+        <form method="get" action="{% url 'energy:meter_list' %}" class="d-inline-block w-auto">
+            <div class="input-group input-group-sm">
+                <input type="text" name="search" class="form-control" placeholder="Поиск по серийному номеру, местоположению..." value="{{ filter_data.search }}">
+                <button type="submit" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1" title="Найти"><i class="bi bi-search"></i></button>
+                <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1 btn-toggle-filter" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFilterCollapse" title="Расширенный фильтр"><i class="bi bi-funnel"></i></button>
+                {% if filter_data.search or filter_data.resource_type or filter_data.is_technical or filter_data.is_active %}
+                <a href="{% url 'energy:meter_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1 d-inline-flex align-items-center justify-content-center" title="Сбросить фильтры"><i class="bi bi-x-circle"></i></a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <!-- Расширенный фильтр -->
+    <div class="collapse mb-4" id="advancedFilterCollapse">
+        <div class="card filter-collapse-card">
+            <div class="card-body">
+                <form method="get" action="{% url 'energy:meter_list' %}" id="advancedFilterForm">
+                    <!-- Сохраняем параметры поиска и чипсов -->
+                    <input type="hidden" name="search" value="{{ filter_data.search }}">
+                    {% if filter_data.meter_type %}<input type="hidden" name="meter_type" value="{{ filter_data.meter_type }}">{% endif %}
+                    {% if filter_data.status %}<input type="hidden" name="status" value="{{ filter_data.status }}">{% endif %}
+                    {% if filter_data.resource_type_chip %}<input type="hidden" name="resource_type_chip" value="{{ filter_data.resource_type_chip }}">{% endif %}
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Тип ресурса</label>
+                            <select name="resource_type" class="form-select form-select-sm">
+                                <option value="">Все</option>
+                                {% for rt in resource_types %}
+                                <option value="{{ rt.id }}" {% if filter_data.resource_type == rt.id|stringformat:"s" %}selected{% endif %}>{{ rt.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Технический учёт</label>
+                            <select name="is_technical" class="form-select form-select-sm">
+                                <option value="">Все</option>
+                                <option value="1" {% if filter_data.is_technical == '1' %}selected{% endif %}>Технические</option>
+                                <option value="0" {% if filter_data.is_technical == '0' %}selected{% endif %}>Основные</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Статус</label>
+                            <select name="is_active" class="form-select form-select-sm">
+                                <option value="">Все</option>
+                                <option value="1" {% if filter_data.is_active == '1' %}selected{% endif %}>Активные</option>
+                                <option value="0" {% if filter_data.is_active == '0' %}selected{% endif %}>Неактивные</option>
+                            </select>
+                        </div>
+                        <!-- Дополнительные поля (можно добавить позже) -->
+                        <div class="col-md-3">
+                            <label class="form-label">Общее потребление от (ед.)</label>
+                            <input type="number" step="0.01" name="consumption_min" class="form-control form-control-sm" placeholder="от">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Общее потребление до (ед.)</label>
+                            <input type="number" step="0.01" name="consumption_max" class="form-control form-control-sm" placeholder="до">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Дата последнего показания с</label>
+                            <input type="text" name="last_reading_from" class="form-control form-control-sm datepicker" placeholder="ДД.ММ.ГГГГ">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Дата последнего показания по</label>
+                            <input type="text" name="last_reading_to" class="form-control form-control-sm datepicker" placeholder="ДД.ММ.ГГГГ">
+                        </div>
+                    </div>
+                    <div class="mt-3 text-end">
+                        <button type="submit" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">Применить фильтры</button>
+                        <a href="{% url 'energy:meter_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">Сбросить все</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Список приборов (карточки) -->
+    <div class="row g-4">
+        {% for meter in meters %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100 border-0 shadow-sm rounded-4 hover-card">
+                <div class="card-body d-flex flex-column">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h5 class="card-title fw-semibold text-truncate" title="{{ meter.serial_number }}">
+                            <i class="bi bi-upc-scan me-1"></i>{{ meter.serial_number }}
+                        </h5>
+                        <div>
+                            {% if meter.is_technical %}
+                            <span class="badge bg-warning text-dark rounded-pill">⚙️ тех.</span>
+                            {% endif %}
+                            {% if not meter.is_active %}
+                            <span class="badge bg-secondary rounded-pill">неактивен</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <span class="badge bg-light text-dark rounded-pill me-1">{{ meter.resource_type.name }}</span>
                         {% if meter.is_multi_tariff %}
-                            <span class="badge bg-info text-dark">⏱ многотарифный</span>
+                        <span class="badge bg-info text-dark rounded-pill">⏱ многотарифный</span>
                         {% else %}
-                            <span class="badge bg-success">🔌 одноставочный</span>
+                        <span class="badge bg-success text-white rounded-pill">одноставочный</span>
                         {% endif %}
                         {% if meter.transformation_ratio != 1 %}
-                            <span class="badge bg-warning text-dark">K={{ meter.transformation_ratio }}</span>
+                        <span class="badge bg-light text-dark rounded-pill">K={{ meter.transformation_ratio }}</span>
+                        {% endif %}
+                    </div>
+                    <p class="card-text small text-muted mb-2">
+                        <i class="bi bi-geo-alt me-1"></i>{{ meter.location|default:"местоположение не указано" }}
+                    </p>
+                    <p class="card-text small mb-3">
+                        <i class="bi bi-clock me-1"></i>Последнее показание: 
+                        {% if meter.last_reading_date %}
+                        {{ meter.last_reading_date|date:"d.m.Y" }}
+                        {% else %}
+                        <span class="text-muted">нет</span>
                         {% endif %}
                     </p>
-                    <p class="card-text small text-muted">
-                        <i class="bi bi-geo-alt"></i> {{ meter.location|default:"местоположение не указано" }}
-                    </p>
-                </div>
-                <div class="card-footer bg-transparent border-0 d-flex justify-content-between align-items-center">
-                    <a href="{% url 'energy:meter_detail' meter.pk %}" class="btn btn-sm btn-outline-primary">Подробнее</a>
-                    <div>
-                        <button type="button" class="btn btn-sm btn-outline-success" title="Добавить показания"
-                                data-bs-toggle="modal" data-bs-target="#addReadingModal" data-meter-id="{{ meter.pk }}">
-                            <i class="bi bi-plus-circle"></i>
-                        </button>
-                        {% if can_edit %}
-                            <a href="{% url 'energy:meter_edit' meter.pk %}" class="btn btn-sm btn-outline-secondary" title="Редактировать">
+                    <div class="mt-auto d-flex justify-content-between align-items-center">
+                        <a href="{% url 'energy:meter_detail' meter.pk %}" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                            <i class="bi bi-eye"></i> Детали
+                        </a>
+                        <div>
+                            <button type="button" class="btn btn-sm btn-outline-success rounded-pill" title="Добавить показания"
+                                    data-bs-toggle="modal" data-bs-target="#addReadingModal" data-meter-id="{{ meter.pk }}">
+                                <i class="bi bi-plus-circle"></i>
+                            </button>
+                            {% if can_edit %}
+                            <a href="{% url 'energy:meter_edit' meter.pk %}" class="btn btn-sm btn-outline-secondary rounded-pill" title="Редактировать">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                        {% endif %}
-                        {% if can_delete %}
-                            <a href="{% url 'energy:meter_delete' meter.pk %}" class="btn btn-sm btn-outline-danger" title="Удалить">
+                            {% endif %}
+                            {% if can_delete %}
+                            <a href="{% url 'energy:meter_delete' meter.pk %}" class="btn btn-sm btn-outline-danger rounded-pill" title="Удалить">
                                 <i class="bi bi-trash"></i>
                             </a>
-                        {% endif %}
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    {% empty %}
+        {% empty %}
         <div class="col-12 text-center text-muted py-5">
-            <i class="bi bi-inbox fs-1"></i>
-            <p class="mt-2">У вас нет приборов учёта. Добавьте первый.</p>
+            <i class="bi bi-inbox fs-1 d-block"></i>
+            <p class="mt-3">Нет приборов учёта, соответствующих фильтрам.</p>
             {% if can_edit %}
-                <a href="{% url 'energy:add_meter' %}" class="btn btn-primary mt-2">Добавить прибор</a>
+            <a href="{% url 'energy:add_meter' %}" class="btn btn-primary rounded-pill px-4 mt-2">
+                <i class="bi bi-plus-circle"></i> Добавить прибор
+            </a>
             {% endif %}
         </div>
-    {% endfor %}
+        {% endfor %}
+    </div>
+
+    <!-- Пагинация -->
+    {% include 'includes/pagination.html' with page_obj=page_obj %}
 </div>
 
-<!-- ==================== МОДАЛЬНОЕ ОКНО ДЛЯ ДОБАВЛЕНИЯ ПОКАЗАНИЙ ==================== -->
+<!-- Модальное окно настроек колонок (для единообразия, но не используется) -->
+<div class="modal fade" id="columnSettingsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 rounded-4 shadow-lg">
+            <form method="post">
+                {% csrf_token %}
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-semibold"><i class="bi bi-layout-three-columns me-2"></i>Настройка отображения</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body pt-2">
+                    <p class="text-muted">Выберите, какие данные показывать в карточках (пока заглушка).</p>
+                    <!-- Здесь можно добавить настройки, но пока оставим -->
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1" data-bs-dismiss="modal">Закрыть</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно добавления показаний (без изменений) -->
 <div class="modal fade" id="addReadingModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 rounded-4 shadow-lg">
-            <!-- ВАЖНО: добавлен enctype="multipart/form-data" -->
             <form method="post" enctype="multipart/form-data" id="modalReadingForm" action="{% url 'energy:add_reading_modal' %}">
                 <div class="modal-header bg-primary text-white border-0">
                     <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Добавить показания</h5>
@@ -87,88 +270,217 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block extra_js %}
+<!-- Контекстное меню (опционально, для единообразия) -->
+<div id="contextMenu" class="custom-context-menu" style="display: none;">
+    <div class="menu-item" id="context-detail"><i class="bi bi-eye"></i> Просмотреть</div>
+    <div class="menu-item" id="context-edit"><i class="bi bi-pencil"></i> Редактировать</div>
+    <div class="menu-item" id="context-add-reading"><i class="bi bi-plus-circle"></i> Добавить показание</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const modal = document.getElementById('addReadingModal');
-        const modalBody = document.getElementById('addReadingModalBody');
-        const saveBtn = document.getElementById('saveReadingBtn');
-        let currentMeterId = null;
+        // Инициализация flatpickr для полей дат
+        flatpickr(".datepicker", {
+            dateFormat: "d.m.Y",
+            locale: "ru",
+            allowInput: true
+        });
 
-        // Инициализация flatpickr для всех элементов с классом datepicker внутри модалки
-        function initDatepickers() {
-            const dateFields = modalBody.querySelectorAll('.datepicker');
-            if (dateFields.length && typeof flatpickr !== 'undefined') {
-                dateFields.forEach(field => {
-                    flatpickr(field, {
-                        dateFormat: "d.m.Y",
-                        locale: "ru",
-                        allowInput: true
-                    });
-                });
-            }
-        }
+        // Контекстное меню
+        const contextMenu = document.getElementById('contextMenu');
+        let currentRowId = null;
 
-        modal.addEventListener('show.bs.modal', async function(event) {
-            const button = event.relatedTarget;
-            currentMeterId = button.getAttribute('data-meter-id');
-            modalBody.innerHTML = '<div class="text-center">Загрузка...</div>';
-            try {
-                const response = await fetch(`/energy/add-reading-modal/?meter_id=${currentMeterId}`);
-                const data = await response.json();
-                if (data.html) {
-                    modalBody.innerHTML = data.html;
-                    initDatepickers();
-                } else {
-                    modalBody.innerHTML = '<div class="alert alert-danger">Ошибка загрузки формы</div>';
-                }
-            } catch (e) {
-                modalBody.innerHTML = '<div class="alert alert-danger">Ошибка загрузки</div>';
+        document.querySelectorAll('table tbody tr').forEach(row => {
+            row.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+                currentRowId = this.dataset.id;
+                contextMenu.style.display = 'block';
+                contextMenu.style.left = e.pageX + 'px';
+                contextMenu.style.top = e.pageY + 'px';
+            });
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!contextMenu.contains(e.target)) {
+                contextMenu.style.display = 'none';
             }
         });
 
-        saveBtn.addEventListener('click', async function() {
-            const form = modalBody.querySelector('form');
-            if (!form) {
-                // fallback – собрать данные вручную
-                const formData = new FormData();
-                formData.append('meter', currentMeterId);
-                const inputs = modalBody.querySelectorAll('input, select');
-                inputs.forEach(input => {
-                    if (input.name) formData.append(input.name, input.value);
-                });
-                const csrf = document.querySelector('[name=csrfmiddlewaretoken]');
-                if (csrf) formData.append('csrfmiddlewaretoken', csrf.value);
-                const response = await fetch('/energy/add-reading-modal/', {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                });
-                const result = await response.json();
-                if (result.status === 'success') {
-                    location.reload();
-                } else {
-                    alert('Ошибка: ' + JSON.stringify(result.errors));
-                }
-            } else {
-                // Используем существующую форму (в ней уже есть все поля)
-                const formData = new FormData(form);
-                if (!formData.has('meter')) formData.append('meter', currentMeterId);
-                const response = await fetch('/energy/add-reading-modal/', {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                });
-                const result = await response.json();
-                if (result.status === 'success') {
-                    location.reload();
-                } else {
-                    alert('Ошибка: ' + JSON.stringify(result.errors));
+        document.getElementById('context-detail')?.addEventListener('click', function() {
+            if (currentRowId) {
+                window.location.href = '/energy/meters/' + currentRowId + '/';
+            }
+        });
+        document.getElementById('context-edit')?.addEventListener('click', function() {
+            if (currentRowId && {{ can_edit|lower }}) {
+                window.location.href = '/energy/meters/' + currentRowId + '/edit/';
+            }
+        });
+        document.getElementById('context-add-reading')?.addEventListener('click', function() {
+            if (currentRowId) {
+                // Открываем модальное окно добавления показаний
+                const modal = new bootstrap.Modal(document.getElementById('addReadingModal'));
+                const button = document.querySelector(`button[data-meter-id="${currentRowId}"]`);
+                if (button) {
+                    modal.show();
                 }
             }
         });
     });
 </script>
+
+<style>
+    /* Стили, аналогичные contract_list */
+    .filter-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .filter-chip {
+        display: inline-block;
+        padding: 4px 14px;
+        border: 1px solid #dee2e6;
+        border-radius: 50px;
+        font-size: 0.85rem;
+        color: #495057;
+        text-decoration: none;
+        transition: all 0.2s;
+        background: #fff;
+    }
+    .filter-chip:hover {
+        background: #f8f9fa;
+        border-color: #adb5bd;
+        color: #0d6efd;
+    }
+    .filter-chip.active {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: white;
+    }
+    .filter-chip.active:hover {
+        background: #0b5ed7;
+        border-color: #0b5ed7;
+        color: white;
+    }
+
+    .stat-card {
+        transition: transform 0.2s;
+    }
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+    .stat-value {
+        line-height: 1.2;
+    }
+    .stat-sub {
+        font-size: 0.75rem;
+    }
+
+    .hover-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .hover-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15) !important;
+    }
+
+    .search-group-wrapper .input-group {
+        max-width: 500px;
+    }
+    .search-group-wrapper .input-group .btn {
+        border-radius: 50px !important;
+    }
+    .search-group-wrapper .input-group .form-control {
+        border-radius: 50px 0 0 50px;
+        border-right: none;
+    }
+    .search-group-wrapper .input-group .btn:last-child {
+        border-radius: 0 50px 50px 0;
+    }
+
+    .filter-collapse-card {
+        border: none;
+        border-radius: 20px;
+        box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+    }
+
+    .btn-icon-circle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+        text-decoration: none;
+        font-size: 0.9rem;
+    }
+    .btn-icon-circle-sm {
+        width: 28px;
+        height: 28px;
+        font-size: 0.8rem;
+    }
+    .btn-icon-circle-info {
+        color: #0d6efd;
+        border-color: #0d6efd;
+    }
+    .btn-icon-circle-info:hover {
+        background: #0d6efd;
+        color: white;
+    }
+    .btn-icon-circle-warning {
+        color: #ffc107;
+        border-color: #ffc107;
+    }
+    .btn-icon-circle-warning:hover {
+        background: #ffc107;
+        color: white;
+    }
+    .btn-icon-circle-danger {
+        color: #dc3545;
+        border-color: #dc3545;
+    }
+    .btn-icon-circle-danger:hover {
+        background: #dc3545;
+        color: white;
+    }
+
+    .custom-context-menu {
+        position: absolute;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 12px;
+        box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15);
+        padding: 8px 0;
+        min-width: 200px;
+        z-index: 1050;
+    }
+    .custom-context-menu .menu-item {
+        padding: 8px 20px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.9rem;
+    }
+    .custom-context-menu .menu-item:hover {
+        background: #f8f9fa;
+    }
+    .custom-context-menu .menu-item i {
+        width: 20px;
+        text-align: center;
+    }
+
+    /* Правки для карточек */
+    .card .badge {
+        font-weight: 500;
+    }
+    .card-title {
+        font-size: 1rem;
+    }
+</style>
 {% endblock %}

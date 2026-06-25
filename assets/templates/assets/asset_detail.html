@@ -26,6 +26,7 @@
     </div>
 
     <div class="row">
+        <!-- Левая колонка: основная информация и вкладки -->
         <div class="col-md-8">
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-light">
@@ -139,31 +140,136 @@
             </div>
         </div>
 
+        <!-- Правая колонка: действия, основное фото и галерея -->
         <div class="col-md-4">
+            <!-- Блок ДЕЙСТВИЯ -->
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-light">
                     <h5 class="mb-0">Действия</h5>
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <!-- Инвентаризация -->
+                        <!-- Отметить в инвентаризации -->
                         <a href="{% url 'assets:inventory_asset' asset.pk %}" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1">
                             <i class="bi bi-check-circle"></i> Отметить в инвентаризации
                         </a>
+
                         {% if can_assign %}
-                        <a href="{% url 'assets:assign_asset' asset.pk %}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">Закрепить</a>
-                        {% if asset.responsible_person %}
-                        <a href="{% url 'assets:return_asset' asset.pk %}" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">Вернуть на склад</a>
+                            <!-- Закрепить -->
+                            <a href="{% url 'assets:assign_asset' asset.pk %}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+                                <i class="bi bi-person-plus"></i> Закрепить
+                            </a>
+                            <!-- Вернуть на склад (только если есть ответственный) -->
+                            {% if asset.responsible_person %}
+                                <a href="{% url 'assets:return_asset' asset.pk %}" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+                                    <i class="bi bi-arrow-return-left"></i> Вернуть на склад
+                                </a>
+                            {% endif %}
                         {% endif %}
-                        {% endif %}
-                        <a href="{% url 'assets:generate_qr' asset.pk %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">Сгенерировать QR</a>
-                        <a href="{% url 'assets:add_check' asset.pk %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">Проверка</a>
-                        <a href="{% url 'assets:inventory_scan' %}" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1">
-                            <i class="bi bi-qr-code-scan"></i> Сканировать QR
+
+                        <!-- Сгенерировать QR -->
+                        <a href="{% url 'assets:generate_qr' asset.pk %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+                            <i class="bi bi-qr-code"></i> Сгенерировать QR
                         </a>
+
+                        <!-- Добавить проверку (только для редакторов) -->
+                        {% if can_edit %}
+                            <a href="{% url 'assets:add_check' asset.pk %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+                                <i class="bi bi-clipboard-check"></i> Добавить проверку
+                            </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
+            <!-- Конец блока ДЕЙСТВИЯ -->
+
+            <!-- Блок ОСНОВНОЕ ФОТО (с загрузкой) -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-image me-2"></i>Основное фото</h5>
+                </div>
+                <div class="card-body text-center">
+                    {% if asset.photo %}
+                        <a href="{{ asset.photo.url }}" target="_blank">
+                            <img src="{{ asset.photo.url }}" alt="Фото" style="max-width:100%; max-height:250px; border-radius:8px; border:1px solid #ddd;">
+                        </a>
+                        <div class="mt-2">
+                            <small class="text-muted">Нажмите для увеличения</small>
+                        </div>
+                    {% else %}
+                        <p class="text-muted"><i class="bi bi-camera" style="font-size:2rem;"></i></p>
+                        <p class="text-muted">Основное фото не добавлено</p>
+                    {% endif %}
+
+                    {% if can_edit %}
+                        <div class="mt-3">
+                            <!-- Форма загрузки основного фото -->
+                            <form id="uploadPhotoForm" action="{% url 'assets:asset_upload_photo' asset.pk %}" method="post" enctype="multipart/form-data" style="display:inline;">
+                                {% csrf_token %}
+                                <label for="photoInput" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+                                    <i class="bi bi-upload"></i> {% if asset.photo %}Заменить{% else %}Добавить{% endif %}
+                                </label>
+                                <input type="file" id="photoInput" name="photo" accept="image/*" style="display:none;" onchange="document.getElementById('uploadPhotoForm').submit();">
+                            </form>
+
+                            {% if asset.photo %}
+                                <form method="post" action="{% url 'assets:asset_delete_photo' asset.pk %}" style="display:inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3 py-1" onclick="return confirm('Удалить основное фото?')">
+                                        <i class="bi bi-trash"></i> Удалить
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            <!-- Конец блока ОСНОВНОЕ ФОТО -->
+
+            <!-- Блок ГАЛЕРЕЯ (несколько фото) -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-images me-2"></i>Галерея</h5>
+                    <span class="badge bg-secondary rounded-pill ms-2">{{ photos|length }}</span>
+                </div>
+                <div class="card-body">
+                    {% if photos %}
+                        <div class="row g-2">
+                            {% for photo in photos %}
+                                <div class="col-4 col-md-3">
+                                    <div class="position-relative">
+                                        <a href="{{ photo.image.url }}" target="_blank">
+                                            <img src="{{ photo.image.url }}" alt="{{ photo.caption }}" class="img-fluid rounded" style="max-height:100px; width:100%; object-fit:cover; border:1px solid #ddd;">
+                                        </a>
+                                        {% if can_edit %}
+                                            <form method="post" action="{% url 'assets:asset_gallery_delete' asset.pk photo.pk %}" style="position:absolute; top:0; right:0;">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-danger rounded-circle p-0" style="width:20px; height:20px; line-height:20px; font-size:12px;" onclick="return confirm('Удалить это фото?')">&times;</button>
+                                            </form>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted text-center">Нет дополнительных фото</p>
+                    {% endif %}
+
+                    {% if can_edit %}
+                        <form method="post" action="{% url 'assets:asset_gallery_upload' asset.pk %}" enctype="multipart/form-data" class="mt-3">
+                            {% csrf_token %}
+                            <div class="input-group">
+                                <input type="file" name="photos" multiple accept="image/*" class="form-control form-control-sm" id="galleryInput">
+                                <button type="submit" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+                                    <i class="bi bi-upload"></i> Загрузить
+                                </button>
+                            </div>
+                            <div class="form-text text-muted small">Можно выбрать несколько файлов</div>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+            <!-- Конец блока ГАЛЕРЕЯ -->
         </div>
     </div>
 </div>

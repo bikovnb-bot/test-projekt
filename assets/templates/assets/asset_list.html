@@ -7,14 +7,19 @@
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2><i class="bi bi-boxes text-primary me-2"></i> Имущество</h2>
-        {% if can_edit %}
-        <a href="{% url 'assets:asset_create' %}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
-            <i class="bi bi-plus-circle"></i> Добавить имущество
-        </a>
-        {% endif %}
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{% url 'assets:import_assets' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+                <i class="bi bi-arrow-repeat"></i> Импорт/Экспорт
+            </a>
+            {% if can_edit %}
+            <a href="{% url 'assets:asset_create' %}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+                <i class="bi bi-plus-circle"></i> Добавить имущество
+            </a>
+            {% endif %}
+        </div>
     </div>
 
-    <!-- Вкладки по категориям (балансовым счетам) -->
+    <!-- Вкладки по категориям -->
     <ul class="nav nav-tabs mb-3" id="categoryTabs">
         <li class="nav-item">
             <a class="nav-link {% if selected_category_id == 'all' or not selected_category_id %}active{% endif %}"
@@ -34,7 +39,7 @@
         {% endfor %}
     </ul>
 
-    <!-- Фильтры и поиск (без категории, так как она уже выбрана вкладкой) -->
+    <!-- Фильтры и поиск -->
     <div class="search-group-wrapper">
         <form method="get" class="d-inline-block w-auto">
             <div class="input-group input-group-sm">
@@ -88,12 +93,54 @@
                 <table class="table table-modern table-hover align-middle mb-0">
                     <thead>
                         <tr>
-                            <th>Инв. №</th>
-                            <th>Наименование</th>
-                            <th>Балансовый счет</th>
-                            <th>Статус</th>
-                            <th>Ответственный</th>
-                            <th>Местонахождение</th>
+                            <th>
+                                <a href="?{% if sort_params %}{{ sort_params.urlencode }}&{% endif %}sort=inventory_number&order={% if current_sort == 'inventory_number' and current_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-dark">
+                                    Инв. №
+                                    {% if current_sort == 'inventory_number' %}
+                                        <i class="bi bi-chevron-{% if current_order == 'asc' %}up{% else %}down{% endif %}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a href="?{% if sort_params %}{{ sort_params.urlencode }}&{% endif %}sort=name&order={% if current_sort == 'name' and current_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-dark">
+                                    Наименование
+                                    {% if current_sort == 'name' %}
+                                        <i class="bi bi-chevron-{% if current_order == 'asc' %}up{% else %}down{% endif %}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a href="?{% if sort_params %}{{ sort_params.urlencode }}&{% endif %}sort=category__name&order={% if current_sort == 'category__name' and current_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-dark">
+                                    Балансовый счет
+                                    {% if current_sort == 'category__name' %}
+                                        <i class="bi bi-chevron-{% if current_order == 'asc' %}up{% else %}down{% endif %}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a href="?{% if sort_params %}{{ sort_params.urlencode }}&{% endif %}sort=status&order={% if current_sort == 'status' and current_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-dark">
+                                    Статус
+                                    {% if current_sort == 'status' %}
+                                        <i class="bi bi-chevron-{% if current_order == 'asc' %}up{% else %}down{% endif %}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a href="?{% if sort_params %}{{ sort_params.urlencode }}&{% endif %}sort=responsible_person__username&order={% if current_sort == 'responsible_person__username' and current_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-dark">
+                                    Ответственный
+                                    {% if current_sort == 'responsible_person__username' %}
+                                        <i class="bi bi-chevron-{% if current_order == 'asc' %}up{% else %}down{% endif %}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a href="?{% if sort_params %}{{ sort_params.urlencode }}&{% endif %}sort=location&order={% if current_sort == 'location' and current_order == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-dark">
+                                    Местонахождение
+                                    {% if current_sort == 'location' %}
+                                        <i class="bi bi-chevron-{% if current_order == 'asc' %}up{% else %}down{% endif %}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
                             <th>Действия</th>
                         </tr>
                     </thead>
